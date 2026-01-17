@@ -38,6 +38,20 @@ def create_issue(repo: str, title: str, body: str, labels: list[str] = None) -> 
     return output.strip()
 
 
+def get_pr_for_branch(repo: str, branch: str) -> Optional[str]:
+    """Check if a PR exists for the given branch and return its URL."""
+    try:
+        output = run_gh([
+            "pr", "view", branch,
+            "--repo", repo,
+            "--json", "url"
+        ])
+        data = json.loads(output)
+        return data.get("url")
+    except RuntimeError:
+        return None
+
+
 def create_pr(
     repo: str,
     branch: str,
@@ -45,16 +59,27 @@ def create_pr(
     body: str,
     base: str = "main"
 ) -> str:
-    """Create a pull request and return its URL."""
-    output = run_gh([
-        "pr", "create",
-        "--repo", repo,
-        "--head", branch,
-        "--base", base,
-        "--title", title,
-        "--body", body,
-    ])
-    return output.strip()
+    """Create a pull request and return its URL.
+
+    If PR creation fails but a PR already exists for the branch,
+    returns the existing PR URL (handles GitHub API race conditions).
+    """
+    try:
+        output = run_gh([
+            "pr", "create",
+            "--repo", repo,
+            "--head", branch,
+            "--base", base,
+            "--title", title,
+            "--body", body,
+        ])
+        return output.strip()
+    except RuntimeError as e:
+        # Check if PR was actually created despite the error
+        existing_pr = get_pr_for_branch(repo, branch)
+        if existing_pr:
+            return existing_pr
+        raise e
 
 
 def delete_branch_if_exists(branch_name: str) -> None:
