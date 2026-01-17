@@ -47,7 +47,11 @@ Implement this task now. Only modify files in the allowlist.
     )
 
     if result.returncode != 0:
-        error_info = result.stderr or result.stdout[:500] or "unknown error"
+        # Log full output for debugging
+        import sys
+        print(f"Claude Code stderr: {result.stderr}", file=sys.stderr)
+        print(f"Claude Code stdout: {result.stdout[:1000]}", file=sys.stderr)
+        error_info = result.stderr or result.stdout[:500] or "unknown error (check logs)"
         raise RuntimeError(f"Claude Code failed: {error_info}")
 
     # Get list of modified files

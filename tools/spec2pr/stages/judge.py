@@ -68,15 +68,20 @@ Output only valid JSON matching the judgment schema.
     )
 
     if result.returncode != 0:
+        # Log full output for debugging
+        import sys
+        print(f"Judge Claude stderr: {result.stderr}", file=sys.stderr)
+        print(f"Judge Claude stdout: {result.stdout[:1000]}", file=sys.stderr)
         # If Claude fails but CI passed, default to accept
         # (CI verification is sufficient for basic correctness)
+        error_info = result.stderr[:200] or result.stdout[:200] or "timeout/error"
         return {
             "judge_id": "error",
             "verdict": "accept",
             "scores": {"ci": 5},
             "blocking_issues": [],
             "confidence": "medium",
-            "rationale": f"CI passed. Judge unavailable: {result.stderr[:200] or 'timeout/error'}",
+            "rationale": f"CI passed. Judge unavailable: {error_info}",
         }
 
     # Parse judgment from output

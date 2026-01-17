@@ -48,7 +48,12 @@ Output only valid JSON - an array of task objects.
     )
 
     if result.returncode != 0:
-        raise RuntimeError(f"Claude Code failed: {result.stderr}")
+        # Log full output for debugging
+        import sys
+        print(f"Claude Code stderr: {result.stderr}", file=sys.stderr)
+        print(f"Claude Code stdout: {result.stdout[:1000]}", file=sys.stderr)
+        error_info = result.stderr or result.stdout[:500] or "unknown error (check logs)"
+        raise RuntimeError(f"Claude Code failed: {error_info}")
 
     # Parse the response - extract JSON from output
     output = result.stdout.strip()
