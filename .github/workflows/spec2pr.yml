@@ -5,7 +5,7 @@ on:
     inputs:
       issue_number:
         required: true
-        type: string
+        type: number
         description: "GitHub issue number containing the spec"
       target_repo:
         required: true
