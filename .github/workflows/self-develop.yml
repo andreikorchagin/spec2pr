@@ -6,6 +6,11 @@ on:
   issues:
     types: [labeled]
 
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
 # Ensure only one spec2pr run at a time
 # This prevents merge conflicts from parallel task execution
 concurrency:
