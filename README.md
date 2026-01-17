@@ -47,10 +47,30 @@ See `templates/ci/` for examples for different project types.
 
 ### 5. Create a spec issue
 
-Create a GitHub issue with:
-- Clear overview of what to build
-- Specific acceptance criteria
-- Constraints / non-goals
+Create a GitHub issue describing what you want to build. You can use either format:
+
+**Natural language** (just describe what you want):
+```
+Add a dark mode toggle to the settings page. It should persist
+the user's preference in localStorage and apply immediately.
+```
+
+**Structured format** (more explicit):
+```markdown
+## Overview
+Add dark mode toggle to settings
+
+## Acceptance Criteria
+- Toggle in settings page
+- Persists to localStorage
+- Applies immediately without reload
+
+## Constraints
+- No external dependencies
+- CSS-only theming
+```
+
+Both formats work. The pipeline infers acceptance criteria from natural language specs.
 
 ### 6. Trigger the pipeline
 

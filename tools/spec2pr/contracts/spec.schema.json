@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Spec",
-  "description": "A parsed specification from a GitHub issue",
+  "description": "A parsed specification from a GitHub issue (structured or natural language)",
   "type": "object",
-  "required": ["id", "title", "overview", "acceptance"],
+  "required": ["id", "title", "overview"],
   "properties": {
     "id": {
       "type": "string",
@@ -20,7 +20,8 @@
     "acceptance": {
       "type": "array",
       "items": {"type": "string"},
-      "description": "Testable acceptance criteria"
+      "description": "Testable acceptance criteria (may be empty for natural language specs)",
+      "default": []
     },
     "constraints": {
       "type": "array",
@@ -33,6 +34,15 @@
       "items": {"type": "string"},
       "description": "External interfaces or dependencies",
       "default": []
+    },
+    "format": {
+      "type": "string",
+      "enum": ["structured", "natural_language"],
+      "description": "Whether the spec was parsed from structured markdown or natural language"
+    },
+    "raw_content": {
+      "type": "string",
+      "description": "Original issue content (only for natural language specs)"
     }
   }
 }

@@ -45,15 +45,19 @@ def load_spec(repo: str, issue_number: int) -> dict:
     """
     Load and parse a GitHub issue into a structured spec.
 
+    Supports both structured markdown (with sections like ## Acceptance Criteria)
+    and natural language specs (plain text descriptions).
+
     Args:
         repo: Repository in owner/repo format
         issue_number: GitHub issue number
 
     Returns:
-        Spec dict matching spec.schema.json
+        Spec dict - either structured or with raw_content for natural language
     """
     issue = get_issue(repo, issue_number)
-    sections = parse_sections(issue["body"] or "")
+    body = issue["body"] or ""
+    sections = parse_sections(body)
 
     # Extract acceptance criteria
     acceptance = []
@@ -79,10 +83,12 @@ def load_spec(repo: str, issue_number: int) -> dict:
     # Build overview from remaining content
     overview = sections.get("overview", "")
     if not overview:
-        # Use body without structured sections as overview
-        overview = sections.get("description", issue["body"] or "")
+        overview = sections.get("description", body)
 
-    return {
+    # Check if this looks like a natural language spec (no structured sections found)
+    is_natural_language = not acceptance and not constraints and not interfaces
+
+    spec = {
         "id": f"{repo}#{issue_number}",
         "title": issue["title"],
         "overview": overview,
@@ -90,3 +96,12 @@ def load_spec(repo: str, issue_number: int) -> dict:
         "constraints": constraints,
         "interfaces": interfaces,
     }
+
+    # For natural language specs, include raw content so planner can interpret it
+    if is_natural_language:
+        spec["raw_content"] = f"# {issue['title']}\n\n{body}"
+        spec["format"] = "natural_language"
+    else:
+        spec["format"] = "structured"
+
+    return spec
