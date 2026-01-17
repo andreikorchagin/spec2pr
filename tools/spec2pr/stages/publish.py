@@ -91,5 +91,4 @@ Please review the blocking issues and either:
         repo,
         f"[spec2pr] Failed: {task['title']}",
         body,
-        labels=["spec2pr", "failed"],
     )
