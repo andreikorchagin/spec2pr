@@ -47,7 +47,8 @@ Implement this task now. Only modify files in the allowlist.
     )
 
     if result.returncode != 0:
-        raise RuntimeError(f"Claude Code failed: {result.stderr}")
+        error_info = result.stderr or result.stdout[:500] or "unknown error"
+        raise RuntimeError(f"Claude Code failed: {error_info}")
 
     # Get list of modified files
     git_result = subprocess.run(
