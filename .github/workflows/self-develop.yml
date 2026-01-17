@@ -1,0 +1,28 @@
+# Use spec2pr to develop spec2pr itself (dogfooding)
+
+name: self-develop
+
+on:
+  issues:
+    types: [labeled]
+
+# Ensure only one spec2pr run at a time
+# This prevents merge conflicts from parallel task execution
+concurrency:
+  group: spec2pr-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  spec2pr:
+    # Only run when the spec2pr/run label is added
+    # Don't run on pull request comments (issues.pull_request is set for PRs)
+    if: |
+      github.event.label.name == 'spec2pr/run' &&
+      !github.event.issue.pull_request &&
+      github.event.repository.fork == false
+
+    uses: andreikorchagin/spec2pr/.github/workflows/spec2pr.yml@main
+    with:
+      issue_number: ${{ github.event.issue.number }}
+      target_repo: ${{ github.repository }}
+    secrets: inherit
