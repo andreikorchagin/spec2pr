@@ -47,16 +47,16 @@ def validate_setup() -> list[str]:
     if not shutil.which("claude"):
         errors.append("claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code")
 
-    # Check for API key
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        errors.append("ANTHROPIC_API_KEY environment variable not set")
+    # Check for API key or OAuth token
+    if not os.environ.get("ANTHROPIC_API_KEY") and not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        errors.append("Neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set")
 
-    # Check for ci.sh
+    # Check for ci.sh (optional - warn but don't fail)
     ci_script = Path("ci.sh")
     if not ci_script.exists():
-        errors.append("ci.sh not found in repository root")
+        print("Warning: ci.sh not found - task verification may be limited", file=sys.stderr)
     elif not os.access(ci_script, os.X_OK):
-        errors.append("ci.sh is not executable. Run: chmod +x ci.sh")
+        print("Warning: ci.sh is not executable. Run: chmod +x ci.sh", file=sys.stderr)
 
     # Check git config
     result = subprocess.run(
