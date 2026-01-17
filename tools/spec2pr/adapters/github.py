@@ -28,14 +28,23 @@ def get_issue(repo: str, issue_number: int) -> dict:
     return json.loads(output)
 
 
-def create_issue(repo: str, title: str, body: str, labels: list[str] = None) -> str:
-    """Create a new issue and return its URL."""
+def create_issue(repo: str, title: str, body: str, labels: list[str] = None) -> Optional[str]:
+    """Create a new issue and return its URL.
+
+    Returns None if issue creation fails (non-critical for failure reporting).
+    """
     args = ["issue", "create", "--repo", repo, "--title", title, "--body", body]
     if labels:
         for label in labels:
             args.extend(["--label", label])
-    output = run_gh(args)
-    return output.strip()
+    try:
+        output = run_gh(args)
+        return output.strip()
+    except RuntimeError as e:
+        # Issue creation is non-critical - log and continue
+        import sys
+        print(f"Warning: Could not create issue: {e}", file=sys.stderr)
+        return None
 
 
 def get_pr_for_branch(repo: str, branch: str) -> Optional[str]:

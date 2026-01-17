@@ -23,7 +23,7 @@ def publish_pr(repo: str, task: dict, result: dict, issue_number: int) -> str:
     Returns:
         PR URL
     """
-    branch_name = f"spec2pr/{task['id']}"
+    branch_name = f"spec2pr/issue-{issue_number}/{task['id']}"
 
     # Clean up any existing branch from previous runs
     delete_branch_if_exists(branch_name)
@@ -94,8 +94,9 @@ Please review the blocking issues and either:
 *Automated issue created by spec2pr*
 """
 
-    return create_issue(
+    url = create_issue(
         repo,
         f"[spec2pr] Failed: {task['title']}",
         body,
     )
+    return url or "(issue creation failed - check logs)"
