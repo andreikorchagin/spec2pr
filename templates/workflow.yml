@@ -7,6 +7,12 @@ on:
   issues:
     types: [labeled]
 
+# Ensure only one spec2pr run at a time per repository
+# This prevents merge conflicts from parallel task execution
+concurrency:
+  group: spec2pr-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   spec2pr:
     # Only run when the spec2pr/run label is added
