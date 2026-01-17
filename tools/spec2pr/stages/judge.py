@@ -1,6 +1,7 @@
 """Judge stage - uses Claude Code to evaluate task completion."""
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -82,13 +83,17 @@ Output only valid JSON matching the judgment schema.
         response = json.loads(output)
         if isinstance(response, dict):
             if "result" in response:
-                return json.loads(response["result"])
+                result_text = response["result"]
+                # Strip markdown code block if present
+                if result_text.startswith("```"):
+                    result_text = re.sub(r'^```(?:json)?\n?', '', result_text)
+                    result_text = re.sub(r'\n?```$', '', result_text)
+                return json.loads(result_text)
             return response
     except json.JSONDecodeError:
         pass
 
     # Try to find JSON object in output
-    import re
     json_match = re.search(r'\{[\s\S]*\}', output)
     if json_match:
         return json.loads(json_match.group())
