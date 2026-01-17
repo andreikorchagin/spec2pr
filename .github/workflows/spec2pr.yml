@@ -1,0 +1,70 @@
+name: spec2pr
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        required: true
+        type: number
+        description: "GitHub issue number containing the spec"
+      target_repo:
+        required: true
+        type: string
+        description: "Target repository in owner/repo format"
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+        description: "Anthropic API key for Claude Code"
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.target_repo }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout spec2pr controller
+        uses: actions/checkout@v4
+        with:
+          repository: andreikorchagin/spec2pr
+          path: .spec2pr
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Configure git
+        run: |
+          git config user.name "spec2pr[bot]"
+          git config user.email "spec2pr[bot]@users.noreply.github.com"
+
+      - name: Run spec2pr pipeline
+        run: |
+          cd $GITHUB_WORKSPACE
+          python .spec2pr/tools/spec2pr/cli.py \
+            --issue ${{ inputs.issue_number }} \
+            --repo ${{ inputs.target_repo }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spec2pr-artifacts
+          path: .spec2pr/artifacts/
+          retention-days: 30
