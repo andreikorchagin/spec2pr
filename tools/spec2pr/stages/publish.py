@@ -4,6 +4,7 @@ from adapters.github import (
     delete_branch_if_exists,
     create_branch,
     commit_changes,
+    rebase_on_main,
     push_branch,
     create_pr,
     create_issue,
@@ -28,10 +29,18 @@ def publish_pr(repo: str, task: dict, result: dict, issue_number: int) -> str:
     # Clean up any existing branch from previous runs
     delete_branch_if_exists(branch_name)
 
-    # Create branch, commit, and push
+    # Create branch, commit, rebase on latest main, and push
     create_branch(branch_name)
     commit_changes(f"spec2pr: {task['title']}\n\nTask: {task['id']}\nGoal: {task['goal']}")
-    push_branch(branch_name)
+
+    # Rebase on latest main to avoid conflicts with concurrent PRs
+    if not rebase_on_main():
+        # If rebase fails, push anyway - PR will show conflicts
+        # but at least the work is preserved
+        import sys
+        print("Warning: Rebase on main failed (conflicts). PR may have merge conflicts.", file=sys.stderr)
+
+    push_branch(branch_name, force=True)  # Force push after rebase
 
     # Create PR
     body = f"""## Summary

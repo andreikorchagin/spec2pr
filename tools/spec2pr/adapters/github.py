@@ -148,6 +148,33 @@ def commit_changes(message: str) -> None:
     subprocess.run(["git", "commit", "-m", message], check=True)
 
 
-def push_branch(branch_name: str) -> None:
+def rebase_on_main() -> bool:
+    """Fetch latest main and rebase current branch on it.
+
+    Returns:
+        True if rebase succeeded, False if conflicts occurred.
+    """
+    # Fetch latest main
+    subprocess.run(["git", "fetch", "origin", "main"], check=True)
+
+    # Attempt rebase
+    result = subprocess.run(
+        ["git", "rebase", "origin/main"],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        # Rebase failed (conflicts) - abort and return False
+        subprocess.run(["git", "rebase", "--abort"], capture_output=True)
+        return False
+
+    return True
+
+
+def push_branch(branch_name: str, force: bool = False) -> None:
     """Push branch to origin."""
-    subprocess.run(["git", "push", "-u", "origin", branch_name], check=True)
+    cmd = ["git", "push", "-u", "origin", branch_name]
+    if force:
+        cmd.insert(2, "--force-with-lease")
+    subprocess.run(cmd, check=True)
