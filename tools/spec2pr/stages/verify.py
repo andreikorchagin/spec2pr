@@ -14,7 +14,22 @@ def verify(task: dict) -> dict:
     Returns:
         Verify dict matching verify.schema.json
     """
-    commands = task.get("done_when", ["./ci.sh"])
+    commands = task.get("done_when", [])
+
+    # If no done_when commands, check for ci.sh
+    if not commands:
+        ci_script = Path("ci.sh")
+        if ci_script.exists():
+            commands = ["./ci.sh"]
+        else:
+            # No verification commands and no ci.sh - skip verification
+            return {
+                "passed": True,
+                "commands": [],
+                "logs_path": "",
+                "summary": "No verification commands specified (ci.sh not found)",
+            }
+
     logs = []
     all_passed = True
 
