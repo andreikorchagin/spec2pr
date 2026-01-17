@@ -1,6 +1,7 @@
 """Publish stage - creates PRs or issues based on judgment."""
 
 from adapters.github import (
+    delete_branch_if_exists,
     create_branch,
     commit_changes,
     push_branch,
@@ -23,6 +24,9 @@ def publish_pr(repo: str, task: dict, result: dict, issue_number: int) -> str:
         PR URL
     """
     branch_name = f"spec2pr/{task['id']}"
+
+    # Clean up any existing branch from previous runs
+    delete_branch_if_exists(branch_name)
 
     # Create branch, commit, and push
     create_branch(branch_name)

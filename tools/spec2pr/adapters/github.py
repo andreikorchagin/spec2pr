@@ -57,6 +57,20 @@ def create_pr(
     return output.strip()
 
 
+def delete_branch_if_exists(branch_name: str) -> None:
+    """Delete local and remote branch if they exist."""
+    # Delete local branch if exists
+    subprocess.run(
+        ["git", "branch", "-D", branch_name],
+        capture_output=True,  # Don't fail if branch doesn't exist
+    )
+    # Delete remote branch if exists
+    subprocess.run(
+        ["git", "push", "origin", "--delete", branch_name],
+        capture_output=True,  # Don't fail if branch doesn't exist
+    )
+
+
 def create_branch(branch_name: str) -> None:
     """Create and checkout a new branch."""
     subprocess.run(["git", "checkout", "-b", branch_name], check=True)

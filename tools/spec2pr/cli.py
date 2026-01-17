@@ -10,6 +10,8 @@ Usage:
 import argparse
 import json
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -34,12 +36,54 @@ def read_json(path: Path) -> dict:
         return json.load(f)
 
 
+def validate_setup() -> list[str]:
+    """Validate that the environment is properly configured. Returns list of errors."""
+    errors = []
+
+    # Check for required tools
+    if not shutil.which("gh"):
+        errors.append("gh CLI not found. Install from https://cli.github.com/")
+
+    if not shutil.which("claude"):
+        errors.append("claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code")
+
+    # Check for API key
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        errors.append("ANTHROPIC_API_KEY environment variable not set")
+
+    # Check for ci.sh
+    ci_script = Path("ci.sh")
+    if not ci_script.exists():
+        errors.append("ci.sh not found in repository root")
+    elif not os.access(ci_script, os.X_OK):
+        errors.append("ci.sh is not executable. Run: chmod +x ci.sh")
+
+    # Check git config
+    result = subprocess.run(
+        ["git", "config", "user.name"],
+        capture_output=True,
+        text=True,
+    )
+    if not result.stdout.strip():
+        errors.append("git user.name not configured")
+
+    return errors
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run the spec2pr pipeline")
     parser.add_argument("--issue", type=int, required=True, help="GitHub issue number")
     parser.add_argument("--repo", type=str, default=None, help="Target repo (owner/repo)")
     parser.add_argument("--dry-run", action="store_true", help="Don't create PRs/issues")
     args = parser.parse_args()
+
+    # Validate setup
+    errors = validate_setup()
+    if errors:
+        print("Setup validation failed:", file=sys.stderr)
+        for error in errors:
+            print(f"  - {error}", file=sys.stderr)
+        sys.exit(1)
 
     # Determine repo from environment if not provided
     repo = args.repo or os.environ.get("GITHUB_REPOSITORY")

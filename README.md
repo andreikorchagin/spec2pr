@@ -22,7 +22,17 @@ Copy `templates/workflow.yml` to `.github/workflows/spec2pr.yml` in your target 
 
 Add `ANTHROPIC_API_KEY` as a repository secret in Settings → Secrets → Actions.
 
-### 3. Create a CI script
+### 3. Configure workflow permissions
+
+In your repository, go to Settings → Actions → General → Workflow permissions:
+
+1. Select **"Read and write permissions"**
+2. Check **"Allow GitHub Actions to create and approve pull requests"**
+3. Click Save
+
+> Without these permissions, the workflow will fail with `startup_failure` or permission denied errors.
+
+### 4. Create a CI script
 
 spec2pr requires a `ci.sh` script in your repository root:
 
@@ -33,14 +43,16 @@ npm test      # or pytest, go test, etc.
 npm run lint  # optional
 ```
 
-### 4. Create a spec issue
+See `templates/ci/` for examples for different project types.
+
+### 5. Create a spec issue
 
 Create a GitHub issue with:
 - Clear overview of what to build
 - Specific acceptance criteria
 - Constraints / non-goals
 
-### 5. Trigger the pipeline
+### 6. Trigger the pipeline
 
 Add the `spec2pr/run` label to the issue. The pipeline will:
 1. Parse your spec
@@ -87,6 +99,8 @@ See `tools/spec2pr/config.yaml` for defaults.
 Target repositories must have:
 - `ci.sh` script (deterministic, non-interactive)
 - `ANTHROPIC_API_KEY` secret
+- Workflow permissions set to "Read and write"
+- "Allow GitHub Actions to create and approve pull requests" enabled
 - Branch protection rules (recommended)
 
 ## License
