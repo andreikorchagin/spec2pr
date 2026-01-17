@@ -89,7 +89,7 @@ def main():
             issue_url = publish_issue(repo, task, judgment)
             print(f"  Created issue: {issue_url}")
         else:
-            pr_url = publish_pr(repo, task, result)
+            pr_url = publish_pr(repo, task, result, issue_number)
             print(f"  Created PR: {pr_url}")
 
     print("\n=== spec2pr: Complete ===")

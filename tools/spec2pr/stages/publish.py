@@ -9,7 +9,7 @@ from adapters.github import (
 )
 
 
-def publish_pr(repo: str, task: dict, result: dict) -> str:
+def publish_pr(repo: str, task: dict, result: dict, issue_number: int) -> str:
     """
     Create a PR for a successfully completed task.
 
@@ -17,6 +17,7 @@ def publish_pr(repo: str, task: dict, result: dict) -> str:
         repo: Repository in owner/repo format
         task: Task dict
         result: Result from run_task
+        issue_number: Original spec issue number to close
 
     Returns:
         PR URL
@@ -32,6 +33,8 @@ def publish_pr(repo: str, task: dict, result: dict) -> str:
     body = f"""## Summary
 
 {task['goal']}
+
+Closes #{issue_number}
 
 ## Task Details
 
