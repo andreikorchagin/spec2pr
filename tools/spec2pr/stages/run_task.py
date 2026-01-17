@@ -54,13 +54,16 @@ Implement this task now. Only modify files in the allowlist.
         error_info = result.stderr or result.stdout[:500] or "unknown error (check logs)"
         raise RuntimeError(f"Claude Code failed: {error_info}")
 
-    # Get list of modified files
+    # Get list of modified files (excluding .spec2pr directory)
     git_result = subprocess.run(
         ["git", "diff", "--name-only"],
         capture_output=True,
         text=True,
     )
-    files_modified = [f for f in git_result.stdout.strip().split("\n") if f]
+    files_modified = [
+        f for f in git_result.stdout.strip().split("\n")
+        if f and not f.startswith(".spec2pr")
+    ]
 
     return {
         "task_id": task["id"],

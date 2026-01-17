@@ -111,8 +111,40 @@ def create_branch(branch_name: str) -> None:
 
 
 def commit_changes(message: str) -> None:
-    """Stage all changes and commit."""
-    subprocess.run(["git", "add", "-A"], check=True)
+    """Stage all changes and commit.
+
+    Excludes:
+    - .spec2pr/ directory (pipeline files, not part of target repo)
+    - Compiled binaries (files without extensions that are executable)
+    """
+    # Add all changes except .spec2pr directory
+    subprocess.run(["git", "add", "-A", ":(exclude).spec2pr"], check=True)
+
+    # Unstage any binary files (compiled executables)
+    # These are typically files without extensions that got compiled
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        capture_output=True,
+        text=True,
+    )
+    for filename in result.stdout.strip().split("\n"):
+        if not filename:
+            continue
+        # Skip files without extensions that might be binaries
+        # (but keep files like Makefile, Dockerfile, etc.)
+        if "." not in filename.split("/")[-1] and filename not in [
+            "Makefile", "Dockerfile", "Vagrantfile", "Gemfile", "Rakefile",
+            "LICENSE", "README", "CHANGELOG", "AUTHORS", "CONTRIBUTING"
+        ]:
+            # Check if it's a binary file
+            check = subprocess.run(
+                ["file", "--mime", filename],
+                capture_output=True,
+                text=True,
+            )
+            if "executable" in check.stdout or "binary" in check.stdout:
+                subprocess.run(["git", "reset", "HEAD", filename], capture_output=True)
+
     subprocess.run(["git", "commit", "-m", message], check=True)
 
 
