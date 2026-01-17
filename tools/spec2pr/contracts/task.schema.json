@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Task",
+  "description": "A single implementation task derived from a spec",
+  "type": "object",
+  "required": ["id", "title", "goal", "files_allowlist", "done_when"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Task identifier (e.g., T001)"
+    },
+    "title": {
+      "type": "string",
+      "description": "Short task title"
+    },
+    "goal": {
+      "type": "string",
+      "description": "Concrete outcome description"
+    },
+    "files_allowlist": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Paths the worker may modify"
+    },
+    "loc_cap": {
+      "type": "integer",
+      "description": "Maximum lines of code to add/modify",
+      "default": 300
+    },
+    "done_when": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Commands that must pass for task completion"
+    },
+    "non_goals": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "What not to do",
+      "default": []
+    }
+  }
+}

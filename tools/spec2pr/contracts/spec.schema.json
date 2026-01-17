@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Spec",
+  "description": "A parsed specification from a GitHub issue",
+  "type": "object",
+  "required": ["id", "title", "overview", "acceptance"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Issue identifier (owner/repo#number)"
+    },
+    "title": {
+      "type": "string",
+      "description": "Short spec title from issue"
+    },
+    "overview": {
+      "type": "string",
+      "description": "High-level description from issue body"
+    },
+    "acceptance": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Testable acceptance criteria"
+    },
+    "constraints": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Explicit non-goals and constraints",
+      "default": []
+    },
+    "interfaces": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "External interfaces or dependencies",
+      "default": []
+    }
+  }
+}

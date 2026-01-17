@@ -1,0 +1,62 @@
+name: Spec
+description: Submit a specification for automated implementation
+title: "[Spec]: "
+labels: ["spec"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Specification Template
+
+        Fill out this template to submit a spec for automated implementation.
+        Be as specific as possible - the clearer the spec, the better the results.
+
+  - type: textarea
+    id: overview
+    attributes:
+      label: Overview
+      description: High-level description of what you want to build
+      placeholder: |
+        Describe the feature or change you want implemented.
+        What problem does it solve? What's the expected outcome?
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Specific, testable criteria for completion
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+        - [ ] Criterion 3
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints / Non-goals
+      description: What should NOT be done or changed
+      placeholder: |
+        - Don't modify existing API contracts
+        - No new dependencies
+        - Out of scope: feature X
+
+  - type: textarea
+    id: interfaces
+    attributes:
+      label: Interfaces / Dependencies
+      description: External systems or APIs this interacts with
+      placeholder: |
+        - Uses existing User model
+        - Calls external payment API
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other relevant information
+      placeholder: |
+        Links to related issues, designs, or documentation

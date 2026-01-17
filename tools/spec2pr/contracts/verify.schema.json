@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Verify",
+  "description": "CI verification result",
+  "type": "object",
+  "required": ["passed", "commands", "summary"],
+  "properties": {
+    "passed": {
+      "type": "boolean",
+      "description": "Whether all verification commands passed"
+    },
+    "commands": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Commands that were executed"
+    },
+    "logs_path": {
+      "type": "string",
+      "description": "Path to full logs file"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Human-readable summary of verification"
+    }
+  }
+}

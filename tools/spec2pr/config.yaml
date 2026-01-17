@@ -1,0 +1,26 @@
+# spec2pr configuration
+
+# Default values for task planning
+defaults:
+  loc_cap: 300
+  done_when:
+    - "./ci.sh"
+
+# Claude Code settings
+claude:
+  model: "claude-sonnet-4-20250514"
+  allowed_tools:
+    planner: ["Read", "Bash"]
+    worker: ["Read", "Edit", "Bash"]
+    judge: ["Read", "Bash"]
+
+# GitHub settings
+github:
+  trigger_label: "spec2pr/run"
+  failed_label: "spec2pr/failed"
+  branch_prefix: "spec2pr/"
+
+# Artifact storage
+artifacts:
+  dir: ".spec2pr/artifacts"
+  retention_days: 30

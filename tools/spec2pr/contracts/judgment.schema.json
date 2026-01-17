@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Judgment",
+  "description": "Agent judgment on task completion",
+  "type": "object",
+  "required": ["judge_id", "verdict", "confidence"],
+  "properties": {
+    "judge_id": {
+      "type": "string",
+      "description": "Identifier for the judge type (e.g., correctness, scope)"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["accept", "reject"],
+      "description": "Final verdict on the task"
+    },
+    "scores": {
+      "type": "object",
+      "additionalProperties": {"type": "integer"},
+      "description": "Numeric scores by category (1-5)"
+    },
+    "blocking_issues": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Issues that caused rejection",
+      "default": []
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Confidence level in the judgment"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Explanation for the verdict"
+    }
+  }
+}
