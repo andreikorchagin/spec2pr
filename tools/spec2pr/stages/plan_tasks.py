@@ -21,6 +21,50 @@ INCLUDED_EXTENSIONS = {
 }
 
 
+def discover_verification_options() -> list[str]:
+    """
+    Discover what verification/CI options are available in the repo.
+
+    Returns:
+        List of available verification commands.
+    """
+    options = []
+
+    # Check for ci.sh
+    if Path("ci.sh").exists():
+        options.append("./ci.sh")
+
+    # Check for Makefile with test target
+    if Path("Makefile").exists():
+        content = Path("Makefile").read_text()
+        if "test:" in content or "check:" in content:
+            options.append("make test")
+
+    # Check for package.json with test script
+    if Path("package.json").exists():
+        import json
+        try:
+            pkg = json.loads(Path("package.json").read_text())
+            if "scripts" in pkg and "test" in pkg["scripts"]:
+                options.append("npm test")
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    # Check for Python test frameworks
+    if Path("pytest.ini").exists() or Path("pyproject.toml").exists() or Path("setup.py").exists():
+        options.append("pytest")
+
+    # Check for go.mod
+    if Path("go.mod").exists():
+        options.append("go test ./...")
+
+    # Check for Cargo.toml
+    if Path("Cargo.toml").exists():
+        options.append("cargo test")
+
+    return options
+
+
 def discover_file_tree(max_files: int = 200) -> str:
     """
     Discover the file tree of the current repository.
@@ -50,8 +94,21 @@ def discover_file_tree(max_files: int = 200) -> str:
 
     files.sort()
 
+    # Discover verification options
+    verification_options = discover_verification_options()
+
     # Build tree representation
     tree_lines = ["## Repository File Tree", ""]
+
+    # Add verification options section
+    tree_lines.append("**Available Verification Commands:**")
+    if verification_options:
+        for opt in verification_options:
+            tree_lines.append(f"- `{opt}`")
+    else:
+        tree_lines.append("- None detected (use simple checks like `python -c 'import ...'` or `git diff --stat`)")
+
+    tree_lines.append("")
     tree_lines.append("**Directories:**")
     for d in sorted(dirs):
         if d != ".":

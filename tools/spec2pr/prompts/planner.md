@@ -18,7 +18,11 @@ For natural language specs:
 ## Rules
 
 1. Each task must be completable in **under 300 lines of code**
-2. Each task must have a clear `done_when` condition (prefer `./ci.sh` if it exists, otherwise use simple verification commands)
+2. **`done_when` must use ONLY commands from "Available Verification Commands" in the file tree. If none exist, use simple checks like:**
+   - `python -c "from module import func"` (verify imports work)
+   - `python -m py_compile path/to/file.py` (verify syntax)
+   - `git diff --stat` (show what changed)
+   - Command from spec's "Done When" section if provided
 3. Tasks should be ordered by dependency (earlier tasks first)
 4. **CRITICAL: `files_allowlist` must contain ONLY paths from the Repository File Tree provided below. Never guess or invent paths.**
 5. Be specific about what each task should accomplish
