@@ -33,6 +33,9 @@ def run_task(task: dict) -> dict:
 Implement this task now. Only modify files in the allowlist.
 """
 
+    # Get model from task, defaulting to haiku
+    model = task.get("model", "haiku")
+
     # Run Claude Code headlessly
     result = subprocess.run(
         [
@@ -40,6 +43,7 @@ Implement this task now. Only modify files in the allowlist.
             "--print",
             "--dangerously-skip-permissions",
             "--allowedTools", "Read,Edit,Bash",
+            "--model", model,
             "-p", full_prompt,
         ],
         capture_output=True,
