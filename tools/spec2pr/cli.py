@@ -8,6 +8,7 @@ Usage:
 """
 
 import argparse
+from datetime import datetime
 import json
 import os
 import shutil
@@ -98,6 +99,8 @@ def main():
     artifacts_dir = Path(f".spec2pr/artifacts/{issue_number}")
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
+    start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"Pipeline started at: {start_time}")
     print(f"=== spec2pr: Processing {repo}#{issue_number} ===")
 
     # Stage 1: Load spec from GitHub issue
