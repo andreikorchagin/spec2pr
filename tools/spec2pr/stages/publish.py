@@ -57,7 +57,13 @@ def publish_combined_pr(repo: str, spec: dict, accepted_tasks: list, issue_numbe
     commit_msg = f"spec2pr: {spec['title']}\n\nTasks completed:\n" + "\n".join(
         f"- {item['task']['id']}: {item['task']['title']}" for item in accepted_tasks
     )
-    commit_changes(commit_msg)
+    has_changes = commit_changes(commit_msg)
+
+    if not has_changes:
+        import sys
+        print("Warning: No changes to commit. Worker may not have made modifications.", file=sys.stderr)
+        # Return early - can't create PR without changes
+        return "(no changes to commit)"
 
     # Rebase on latest main
     if not rebase_on_main():

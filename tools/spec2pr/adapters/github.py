@@ -110,12 +110,15 @@ def create_branch(branch_name: str) -> None:
     subprocess.run(["git", "checkout", "-b", branch_name], check=True)
 
 
-def commit_changes(message: str) -> None:
+def commit_changes(message: str) -> bool:
     """Stage all changes and commit.
 
     Excludes:
     - .spec2pr/ directory (pipeline files, not part of target repo)
     - Compiled binaries (files without extensions that are executable)
+
+    Returns:
+        True if changes were committed, False if nothing to commit.
     """
     # Add all changes except .spec2pr directory
     subprocess.run(["git", "add", "-A", ":(exclude).spec2pr"], check=True)
@@ -127,9 +130,9 @@ def commit_changes(message: str) -> None:
         capture_output=True,
         text=True,
     )
-    for filename in result.stdout.strip().split("\n"):
-        if not filename:
-            continue
+    staged_files = [f for f in result.stdout.strip().split("\n") if f]
+
+    for filename in staged_files:
         # Skip files without extensions that might be binaries
         # (but keep files like Makefile, Dockerfile, etc.)
         if "." not in filename.split("/")[-1] and filename not in [
@@ -145,7 +148,17 @@ def commit_changes(message: str) -> None:
             if "executable" in check.stdout or "binary" in check.stdout:
                 subprocess.run(["git", "reset", "HEAD", filename], capture_output=True)
 
+    # Check if there are still staged changes
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        capture_output=True,
+        text=True,
+    )
+    if not result.stdout.strip():
+        return False  # Nothing to commit
+
     subprocess.run(["git", "commit", "-m", message], check=True)
+    return True
 
 
 def rebase_on_main() -> bool:
