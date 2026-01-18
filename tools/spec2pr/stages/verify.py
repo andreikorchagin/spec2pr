@@ -4,6 +4,54 @@ import subprocess
 from pathlib import Path
 
 
+def validate_files_allowlist(task: dict) -> dict | None:
+    """
+    Validate that files_allowlist paths exist or could be created.
+
+    Args:
+        task: Task dict with files_allowlist
+
+    Returns:
+        None if valid, or failure dict if invalid paths found
+    """
+    allowlist = task.get("files_allowlist", [])
+    if not allowlist:
+        return None
+
+    invalid_paths = []
+    for path_str in allowlist:
+        path = Path(path_str)
+        # Path is valid if it exists OR its parent directory exists (can be created)
+        if not path.exists() and not path.parent.exists():
+            invalid_paths.append(path_str)
+
+    if not invalid_paths:
+        return None
+
+    # Suggest actual paths from codebase
+    cwd = Path(".")
+    available = []
+    for item in cwd.rglob("*"):
+        if any(p in item.parts for p in [".git", ".spec2pr", "__pycache__", "node_modules"]):
+            continue
+        if item.is_file() and item.suffix in [".py", ".json", ".md", ".sh", ".yml", ".yaml"]:
+            available.append(str(item))
+    available.sort()
+
+    suggestion = ""
+    if available:
+        suggestion = "\n\nAvailable files:\n  " + "\n  ".join(available[:15])
+        if len(available) > 15:
+            suggestion += f"\n  ... and {len(available) - 15} more"
+
+    return {
+        "passed": False,
+        "commands": [],
+        "logs_path": "",
+        "summary": f"Path validation failed. Invalid paths: {', '.join(invalid_paths)}{suggestion}",
+    }
+
+
 def verify(task: dict) -> dict:
     """
     Run verification commands for a task.
@@ -14,6 +62,11 @@ def verify(task: dict) -> dict:
     Returns:
         Verify dict matching verify.schema.json
     """
+    # Validate file paths first
+    path_error = validate_files_allowlist(task)
+    if path_error:
+        return path_error
+
     commands = task.get("done_when", [])
 
     # If no done_when commands, check for ci.sh
