@@ -22,6 +22,8 @@ from stages.verify import verify
 from stages.judge import judge
 from stages.publish import publish_pr, publish_issue, publish_combined_pr
 
+__version__ = "0.1.0"
+
 
 def write_json(path: Path, data: dict) -> None:
     """Write JSON data to file with pretty formatting."""
@@ -72,6 +74,7 @@ def validate_setup() -> list[str]:
 
 def main():
     parser = argparse.ArgumentParser(description="Run the spec2pr pipeline")
+    parser.add_argument("--version", action="version", version=f"spec2pr {__version__}")
     parser.add_argument("--issue", type=int, required=True, help="GitHub issue number")
     parser.add_argument("--repo", type=str, default=None, help="Target repo (owner/repo)")
     parser.add_argument("--dry-run", action="store_true", help="Don't create PRs/issues")
