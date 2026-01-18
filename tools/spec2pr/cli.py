@@ -77,7 +77,7 @@ def main():
     parser.add_argument("--version", action="version", version=f"spec2pr {__version__}")
     parser.add_argument("--issue", type=int, required=True, help="GitHub issue number")
     parser.add_argument("--repo", type=str, default=None, help="Target repo (owner/repo)")
-    parser.add_argument("--dry-run", action="store_true", help="Don't create PRs/issues")
+    parser.add_argument("--dry-run", action="store_true", help="Run pipeline without creating PRs or issues (for testing)")
     args = parser.parse_args()
 
     # Validate setup
