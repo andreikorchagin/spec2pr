@@ -61,7 +61,8 @@ tools/spec2pr/
 ### Key Behaviors
 - **Single PR per issue**: All tasks commit to one branch, one PR created at end
 - **Sequential execution**: Tasks run one at a time (GitHub Actions concurrency)
-- **Haiku by default**: Uses cheaper model, can specify `model: "sonnet"` in task
+- **Haiku by default**: Uses cheaper model, escalates on failure (haiku → sonnet → opus)
+- **Retry with escalation**: Failed tasks retry up to 3 times with model escalation
 - **Path validation**: Verify stage fails fast on hallucinated file paths
 
 ---
@@ -75,9 +76,9 @@ tools/spec2pr/
 - Path validation in verify stage
 - Graceful handling of empty commits
 - Version flag (`--version`)
+- Retry with model escalation (haiku → sonnet → opus)
 
 ### Known Issues
-- No retry logic for failed tasks (#23)
 - LOC cap is not enforced (#24)
 
 ---
@@ -107,7 +108,6 @@ tools/spec2pr/
 **Source of truth**: [GitHub Issues with `bootstrap` label](https://github.com/andreikorchagin/spec2pr/issues?q=is%3Aissue+is%3Aopen+label%3Abootstrap)
 
 Current priority:
-- #23: Retry logic with model escalation
 - #24: LOC cap enforcement
 - #25: Task dependency detection
 
