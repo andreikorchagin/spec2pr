@@ -43,6 +43,11 @@
       "items": {"type": "string"},
       "description": "What not to do",
       "default": []
+    },
+    "independent": {
+      "type": "boolean",
+      "description": "If true, this task creates its own PR instead of being grouped with others",
+      "default": false
     }
   }
 }

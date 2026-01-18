@@ -20,7 +20,7 @@ from stages.plan_tasks import plan_tasks
 from stages.run_task import run_task
 from stages.verify import verify
 from stages.judge import judge
-from stages.publish import publish_pr, publish_issue
+from stages.publish import publish_pr, publish_issue, publish_combined_pr
 
 
 def write_json(path: Path, data: dict) -> None:
@@ -109,32 +109,64 @@ def main():
     write_json(artifacts_dir / "tasks.json", {"tasks": tasks})
     print(f"  Planned {len(tasks)} task(s)")
 
-    # Stage 3-6: Execute each task
+    # Track results for combined PR
+    accepted_tasks = []
+    rejected_tasks = []
+
+    # Stage 3-5: Execute each task (no publishing yet)
     for i, task in enumerate(tasks):
         task_dir = artifacts_dir / task["id"]
         task_dir.mkdir(parents=True, exist_ok=True)
 
-        print(f"\n[3/6] Running task {task['id']}: {task['title']}...")
+        print(f"\n[3/5] Running task {task['id']}: {task['title']}...")
         result = run_task(task)
         write_json(task_dir / "result.json", result)
 
-        print(f"[4/6] Verifying task {task['id']}...")
+        print(f"[4/5] Verifying task {task['id']}...")
         verify_result = verify(task)
         write_json(task_dir / "verify.json", verify_result)
 
-        print(f"[5/6] Judging task {task['id']}...")
+        print(f"[5/5] Judging task {task['id']}...")
         judgment = judge(task, result, verify_result)
         write_json(task_dir / "judgment.json", judgment)
 
-        print(f"[6/6] Publishing task {task['id']}...")
-        if args.dry_run:
-            print(f"  [DRY RUN] Would {'create PR' if judgment['verdict'] == 'accept' else 'create issue'}")
-        elif judgment["verdict"] == "reject":
-            issue_url = publish_issue(repo, task, judgment)
-            print(f"  Created issue: {issue_url}")
+        # Validate judgment has required fields
+        verdict = judgment.get("verdict")
+        if verdict not in ("accept", "reject"):
+            print(f"  Warning: Invalid judgment (verdict={verdict}), treating as reject", file=sys.stderr)
+            judgment["verdict"] = "reject"
+            judgment["blocking_issues"] = judgment.get("blocking_issues", []) + [
+                f"Judge returned invalid verdict: {verdict}"
+            ]
+            verdict = "reject"
+
+        if verdict == "accept":
+            accepted_tasks.append({"task": task, "result": result, "verify": verify_result})
+            print(f"  ✓ Task accepted")
         else:
-            pr_url = publish_pr(repo, task, result, issue_number)
+            rejected_tasks.append({"task": task, "judgment": judgment})
+            print(f"  ✗ Task rejected: {judgment.get('rationale', 'unknown reason')[:100]}")
+
+    # Stage 6: Publish results
+    print("\n[6/6] Publishing results...")
+
+    if args.dry_run:
+        if accepted_tasks:
+            print(f"  [DRY RUN] Would create PR with {len(accepted_tasks)} task(s)")
+        for rt in rejected_tasks:
+            print(f"  [DRY RUN] Would create issue for rejected task {rt['task']['id']}")
+    else:
+        # Create single PR for all accepted tasks
+        if accepted_tasks:
+            pr_url = publish_combined_pr(repo, spec, accepted_tasks, issue_number)
             print(f"  Created PR: {pr_url}")
+        else:
+            print("  No tasks accepted - skipping PR creation")
+
+        # Create issues for rejected tasks
+        for rt in rejected_tasks:
+            issue_url = publish_issue(repo, rt["task"], rt["judgment"])
+            print(f"  Created issue for {rt['task']['id']}: {issue_url}")
 
     print("\n=== spec2pr: Complete ===")
 
