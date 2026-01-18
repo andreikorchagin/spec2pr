@@ -7,6 +7,66 @@ from pathlib import Path
 
 PLANNER_PROMPT = Path(__file__).parent.parent / "prompts" / "planner.md"
 
+# Directories to exclude from file tree
+EXCLUDED_DIRS = {
+    ".git", ".spec2pr", "__pycache__", "node_modules", ".pytest_cache",
+    ".mypy_cache", ".ruff_cache", "venv", ".venv", "dist", "build", ".egg-info"
+}
+
+# File extensions to include
+INCLUDED_EXTENSIONS = {
+    ".py", ".js", ".ts", ".tsx", ".jsx", ".json", ".yaml", ".yml",
+    ".md", ".sh", ".c", ".h", ".go", ".rs", ".rb", ".java", ".kt",
+    ".swift", ".css", ".scss", ".html", ".sql", ".toml", ".cfg", ".ini"
+}
+
+
+def discover_file_tree(max_files: int = 200) -> str:
+    """
+    Discover the file tree of the current repository.
+
+    Returns:
+        A string representation of the file tree for inclusion in prompts.
+    """
+    files = []
+    dirs = set()
+
+    for path in Path(".").rglob("*"):
+        # Skip excluded directories
+        if any(excluded in path.parts for excluded in EXCLUDED_DIRS):
+            continue
+
+        if path.is_file():
+            # Include files with known extensions or known names
+            if path.suffix in INCLUDED_EXTENSIONS or path.name in {
+                "Makefile", "Dockerfile", "Gemfile", "Rakefile", "LICENSE", "README"
+            }:
+                files.append(str(path))
+                # Track parent directories
+                dirs.add(str(path.parent))
+
+        if len(files) >= max_files:
+            break
+
+    files.sort()
+
+    # Build tree representation
+    tree_lines = ["## Repository File Tree", ""]
+    tree_lines.append("**Directories:**")
+    for d in sorted(dirs):
+        if d != ".":
+            tree_lines.append(f"- {d}/")
+
+    tree_lines.append("")
+    tree_lines.append("**Files:**")
+    for f in files[:100]:  # Limit to 100 files in output
+        tree_lines.append(f"- {f}")
+
+    if len(files) > 100:
+        tree_lines.append(f"- ... and {len(files) - 100} more files")
+
+    return "\n".join(tree_lines)
+
 
 def plan_tasks(spec: dict) -> list[dict]:
     """
@@ -21,14 +81,21 @@ def plan_tasks(spec: dict) -> list[dict]:
     # Read the planner prompt
     prompt = PLANNER_PROMPT.read_text()
 
+    # Discover file tree for context
+    file_tree = discover_file_tree()
+
     # Build the full prompt with spec context
     full_prompt = f"""{prompt}
+
+{file_tree}
 
 ## Spec to plan
 
 ```json
 {json.dumps(spec, indent=2)}
 ```
+
+**IMPORTANT**: Use ONLY paths from the Repository File Tree above in `files_allowlist`. Do not guess or invent paths.
 
 Output only valid JSON - an array of task objects.
 """

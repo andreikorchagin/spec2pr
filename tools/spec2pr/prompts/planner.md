@@ -18,11 +18,12 @@ For natural language specs:
 ## Rules
 
 1. Each task must be completable in **under 300 lines of code**
-2. Each task must have a clear `done_when` condition (usually `./ci.sh`)
+2. Each task must have a clear `done_when` condition (prefer `./ci.sh` if it exists, otherwise use simple verification commands)
 3. Tasks should be ordered by dependency (earlier tasks first)
-4. Include `files_allowlist` to constrain where the worker can make changes
+4. **CRITICAL: `files_allowlist` must contain ONLY paths from the Repository File Tree provided below. Never guess or invent paths.**
 5. Be specific about what each task should accomplish
 6. Include `non_goals` to prevent scope creep
+7. If a file needs to be created, include its parent directory in `files_allowlist` (the directory must exist in the tree)
 
 ## Output Format
 
