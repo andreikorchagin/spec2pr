@@ -4,6 +4,61 @@ import subprocess
 from pathlib import Path
 
 
+def validate_files_allowlist(task: dict) -> dict | None:
+    """
+    Validate that files_allowlist paths exist in the codebase.
+
+    Args:
+        task: Task dict with files_allowlist
+
+    Returns:
+        None if valid, or failure dict if invalid paths found
+    """
+    allowlist = task.get("files_allowlist", [])
+    if not allowlist:
+        return None
+
+    invalid_paths = []
+    for path_str in allowlist:
+        path = Path(path_str)
+        # Check if path exists (file or directory)
+        if not path.exists():
+            invalid_paths.append(path_str)
+
+    if not invalid_paths:
+        return None
+
+    # Build helpful suggestions from directory structure
+    cwd = Path(".")
+    available_dirs = []
+    available_files = []
+
+    for item in cwd.rglob("*"):
+        if item.is_dir() and not any(p in item.parts for p in [".git", ".spec2pr", "__pycache__", ".pytest_cache"]):
+            available_dirs.append(str(item))
+        elif item.is_file() and item.suffix in [".py", ".json", ".md", ".sh"]:
+            available_files.append(str(item))
+
+    # Sort for readability
+    available_dirs.sort()
+    available_files.sort()
+
+    suggestions = []
+    if available_dirs:
+        suggestions.append(f"Available directories:\n  " + "\n  ".join(available_dirs[:10]))
+    if available_files:
+        suggestions.append(f"Available files:\n  " + "\n  ".join(available_files[:10]))
+
+    suggestion_text = "\n".join(suggestions) if suggestions else "No suggestions available"
+
+    return {
+        "passed": False,
+        "commands": [],
+        "logs_path": "",
+        "summary": f"Path validation failed. Invalid paths in files_allowlist: {', '.join(invalid_paths)}\n\n{suggestion_text}",
+    }
+
+
 def verify(task: dict) -> dict:
     """
     Run verification commands for a task.
@@ -14,6 +69,11 @@ def verify(task: dict) -> dict:
     Returns:
         Verify dict matching verify.schema.json
     """
+    # Validate files_allowlist paths first
+    validation_result = validate_files_allowlist(task)
+    if validation_result:
+        return validation_result
+
     commands = task.get("done_when", [])
 
     # If no done_when commands, check for ci.sh
