@@ -128,6 +128,13 @@ def main():
         result = run_task(task)
         write_json(task_dir / "result.json", result)
 
+        # Log retry information
+        attempts = result.get("attempts", [])
+        if len(attempts) > 1:
+            print(f"  Completed after {len(attempts)} attempt(s), final model: {result.get('model', 'unknown')}")
+        if not result.get("success", True):
+            print(f"  Warning: All attempts failed", file=sys.stderr)
+
         print(f"[4/5] Verifying task {task['id']}...")
         verify_result = verify(task)
         write_json(task_dir / "verify.json", verify_result)
