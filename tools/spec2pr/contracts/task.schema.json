@@ -27,6 +27,12 @@
       "description": "Maximum lines of code to add/modify",
       "default": 300
     },
+    "model": {
+      "type": "string",
+      "enum": ["haiku", "sonnet"],
+      "description": "Model to use for task execution",
+      "default": "haiku"
+    },
     "done_when": {
       "type": "array",
       "items": {"type": "string"},
