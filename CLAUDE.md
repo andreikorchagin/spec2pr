@@ -77,9 +77,8 @@ tools/spec2pr/
 - Version flag (`--version`)
 
 ### Known Issues
-- Planner hallucinates file paths (needs TASK-006)
-- `done_when` often references non-existent scripts (needs TASK-004)
-- No retry logic for failed tasks (needs TASK-002)
+- No retry logic for failed tasks (#23)
+- LOC cap is not enforced (#24)
 
 ---
 
@@ -103,17 +102,18 @@ tools/spec2pr/
 
 ---
 
-## Backlog (Priority Order)
+## Backlog
 
-See `~/.claude/project-notes/spec2pr-prd.md` for full details.
+**Source of truth**: [GitHub Issues with `bootstrap` label](https://github.com/andreikorchagin/spec2pr/issues?q=is%3Aissue+is%3Aopen+label%3Abootstrap)
 
-| Task | Description | Status |
-|------|-------------|--------|
-| TASK-006 | Auto-detect file paths before planning | **Next** |
-| TASK-004 | Validate/infer done_when commands | Ready |
-| TASK-002 | Retry logic with model escalation | Ready |
-| TASK-003 | LOC cap enforcement | Ready |
-| TASK-007 | Task dependency detection | Backlog |
+Current priority:
+- #23: Retry logic with model escalation
+- #24: LOC cap enforcement
+- #25: Task dependency detection
+
+Labels:
+- `bootstrap` = manual work during bootstrapping phase
+- `spec2pr/run` = ready for automation (don't use until bootstrapping complete)
 
 ---
 
@@ -147,4 +147,4 @@ python tools/spec2pr/cli.py --issue <N> --repo andreikorchagin/spec2pr --dry-run
 
 ---
 
-*Last updated: 2026-01-18*
+*Last updated: 2026-01-18 (backlog moved to GitHub Issues)*
