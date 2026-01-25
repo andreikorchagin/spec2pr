@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from stages.code_review import code_review
+from stages.code_review import run_code_review as code_review
 from stages.verify import verify
 
 
