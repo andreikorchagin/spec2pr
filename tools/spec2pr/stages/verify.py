@@ -4,6 +4,54 @@ import subprocess
 from pathlib import Path
 
 
+def run_deterministic_checks() -> dict:
+    """
+    Run deterministic checks (linting, type checking, tests) before AI review.
+
+    Returns:
+        Dict with categorized check results:
+        {
+            "linting": {"passed": bool, "output": str},
+            "type_checking": {"passed": bool, "output": str},
+            "tests": {"passed": bool, "output": str}
+        }
+    """
+    results = {
+        "linting": {"passed": True, "output": ""},
+        "type_checking": {"passed": True, "output": ""},
+        "tests": {"passed": True, "output": ""},
+    }
+
+    # Run linting with pylint
+    lint_result = subprocess.run(
+        ["python", "-m", "pylint", "--errors-only", "tools/spec2pr"],
+        capture_output=True,
+        text=True,
+    )
+    results["linting"]["output"] = lint_result.stdout + lint_result.stderr
+    results["linting"]["passed"] = lint_result.returncode == 0
+
+    # Run type checking with mypy
+    type_result = subprocess.run(
+        ["python", "-m", "mypy", "tools/spec2pr", "--ignore-missing-imports"],
+        capture_output=True,
+        text=True,
+    )
+    results["type_checking"]["output"] = type_result.stdout + type_result.stderr
+    results["type_checking"]["passed"] = type_result.returncode == 0
+
+    # Run tests with pytest
+    test_result = subprocess.run(
+        ["python", "-m", "pytest", "-v"],
+        capture_output=True,
+        text=True,
+    )
+    results["tests"]["output"] = test_result.stdout + test_result.stderr
+    results["tests"]["passed"] = test_result.returncode == 0
+
+    return results
+
+
 def validate_files_allowlist(task: dict) -> dict | None:
     """
     Validate that files_allowlist paths exist or could be created.
