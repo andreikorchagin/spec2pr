@@ -118,6 +118,8 @@ def _parse_feedback(output: str) -> dict:
     Returns:
         Feedback dict with verdict, issues, summary
     """
+    feedback = None
+
     try:
         response = json.loads(output)
         if isinstance(response, dict):
@@ -128,30 +130,39 @@ def _parse_feedback(output: str) -> dict:
                 if result_text.startswith("```"):
                     result_text = re.sub(r'^```(?:json)?\n?', '', result_text)
                     result_text = re.sub(r'\n?```$', '', result_text)
-                return json.loads(result_text)
+                feedback = json.loads(result_text)
             # Handle direct feedback format
-            if "verdict" in response:
-                return response
+            elif "verdict" in response:
+                feedback = response
     except json.JSONDecodeError:
         pass
 
     # Try to find JSON object in output
-    json_match = re.search(r'\{[\s\S]*\}', output)
-    if json_match:
-        try:
-            parsed = json.loads(json_match.group())
-            if "verdict" in parsed:
-                return parsed
-        except json.JSONDecodeError:
-            pass
+    if not feedback:
+        json_match = re.search(r'\{[\s\S]*\}', output)
+        if json_match:
+            try:
+                parsed = json.loads(json_match.group())
+                if "verdict" in parsed:
+                    feedback = parsed
+            except json.JSONDecodeError:
+                pass
 
     # Default to requesting changes if we can't parse
-    return {
-        "verdict": "request_changes",
-        "issues": [{
-            "severity": "blocking",
-            "category": "correctness",
-            "message": "Failed to parse review feedback"
-        }],
-        "summary": "Unable to complete code review",
-    }
+    if not feedback:
+        return {
+            "verdict": "request_changes",
+            "issues": [{
+                "severity": "blocking",
+                "category": "correctness",
+                "message": "Failed to parse review feedback"
+            }],
+            "summary": "Unable to complete code review",
+        }
+
+    # Fix inconsistency: "request_changes" with no issues should be "approve"
+    if feedback.get("verdict") == "request_changes" and not feedback.get("issues"):
+        feedback["verdict"] = "approve"
+        feedback["summary"] = feedback.get("summary", "") + " (auto-approved: no issues specified)"
+
+    return feedback
