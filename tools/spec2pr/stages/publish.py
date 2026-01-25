@@ -1,6 +1,14 @@
 """Publish stage - creates PRs or issues based on judgment."""
 
+import re
 import subprocess
+
+
+def clean_title(title: str) -> str:
+    """Remove spec2pr failure prefixes from issue titles for cleaner PR titles."""
+    # Strip "[spec2pr] Failed: " prefix if present
+    cleaned = re.sub(r'^\[spec2pr\]\s*Failed:\s*', '', title)
+    return cleaned
 
 from adapters.github import (
     delete_branch_if_exists,
@@ -91,7 +99,7 @@ Closes #{issue_number}
 *This PR was created automatically by [spec2pr](https://github.com/andreikorchagin/spec2pr). Please review carefully before merging.*
 """
 
-    return create_pr(repo, branch_name, f"spec2pr: {spec['title']}", body)
+    return create_pr(repo, branch_name, f"spec2pr: {clean_title(spec['title'])}", body)
 
 
 def publish_pr(repo: str, task: dict, result: dict, issue_number: int) -> str:
