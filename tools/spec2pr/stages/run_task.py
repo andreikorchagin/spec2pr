@@ -43,7 +43,8 @@ def run_task(task: dict) -> dict:
         result = _execute_task(task, model, previous_failures)
         result["model"] = model
         result["attempt"] = attempt_num + 1
-        attempts.append(result)
+        # Store a copy in attempts to avoid circular reference when we add attempts to result
+        attempts.append({**result})
 
         if result.get("success", False):
             result["attempts"] = attempts
@@ -52,8 +53,8 @@ def run_task(task: dict) -> dict:
         print(f"  Attempt {attempt_num + 1} failed: {result.get('error', 'unknown')[:100]}", file=sys.stderr)
 
     # All attempts failed - return last result with full attempt history
-    final_result = attempts[-1]
-    final_result["attempts"] = attempts
+    # Create a new dict to avoid circular reference (attempts contains copies)
+    final_result = {**attempts[-1], "attempts": attempts}
     return final_result
 
 
