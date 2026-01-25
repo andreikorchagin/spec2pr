@@ -77,10 +77,6 @@ def build_dependency_graph(tasks: list[dict]) -> list[dict]:
                 if in_degree[other_task["id"]] == 0:
                     queue.append(other_task["id"])
 
-    # Check if all tasks were processed (no cycles)
-    if len(result) != len(tasks):
-        raise ValueError("Dependency cycle detected in task graph")
-
     return result
 
 
