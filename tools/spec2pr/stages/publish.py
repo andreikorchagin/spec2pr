@@ -21,6 +21,45 @@ from adapters.github import (
 )
 
 
+def _build_review_section(accepted_tasks: list) -> str:
+    """Build a code review summary section for the PR body."""
+    review_items = []
+    for item in accepted_tasks:
+        result = item["result"]
+        history = result.get("review_history", [])
+        if not history:
+            continue
+
+        task_id = item["task"]["id"]
+        review_items.append(f"\n### {task_id}\n")
+
+        for review in history:
+            iteration = review.get("iteration", "?")
+            verdict = review.get("verdict", "unknown")
+            issues = review.get("issues", [])
+            summary = review.get("summary", "")
+
+            if verdict == "approve":
+                review_items.append(f"- **Iteration {iteration}**: ✅ Approved")
+                if summary:
+                    review_items.append(f"  - {summary}")
+            else:
+                review_items.append(f"- **Iteration {iteration}**: 🔄 Changes requested ({len(issues)} issue(s))")
+                for issue in issues:
+                    file_path = issue.get("file", "")
+                    line = issue.get("line", 0)
+                    severity = issue.get("severity", "info").upper()
+                    message = issue.get("message", "")
+                    review_items.append(f"  - {file_path}:{line} [{severity}] {message}")
+                    if issue.get("suggestion"):
+                        review_items.append(f"    → {issue.get('suggestion')}")
+
+    if not review_items:
+        return ""
+
+    return "## Code Review Summary\n" + "\n".join(review_items) + "\n"
+
+
 def publish_combined_pr(repo: str, spec: dict, accepted_tasks: list, issue_number: int) -> str:
     """
     Create a single PR for all accepted tasks.
@@ -80,6 +119,9 @@ def publish_combined_pr(repo: str, spec: dict, accepted_tasks: list, issue_numbe
 
     push_branch(branch_name, force=True)
 
+    # Build review section
+    review_section = _build_review_section(accepted_tasks)
+
     # Build PR body
     body = f"""## Summary
 
@@ -95,6 +137,7 @@ Closes #{issue_number}
 
 {', '.join(sorted(set(all_files))) if all_files else 'None'}
 
+{review_section}
 ---
 *This PR was created automatically by [spec2pr](https://github.com/andreikorchagin/spec2pr). Please review carefully before merging.*
 """
