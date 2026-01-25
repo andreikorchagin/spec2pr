@@ -141,7 +141,20 @@ Implement this task now. Only modify files in the allowlist.
     }
 
     # Get allowlist from task
-    allowlist = set(task.get("files_allowlist", []))
+    allowlist = task.get("files_allowlist", [])
+
+    def is_allowed(filepath: str) -> bool:
+        """Check if file is allowed (exact match or under allowed directory)."""
+        for allowed in allowlist:
+            if allowed.endswith("/"):
+                # Directory prefix match
+                if filepath.startswith(allowed):
+                    return True
+            else:
+                # Exact file match
+                if filepath == allowed:
+                    return True
+        return False
 
     all_modified = []
     files_modified = []
@@ -167,8 +180,8 @@ Implement this task now. Only modify files in the allowlist.
 
         all_modified.append(f)
 
-        # Check if file is in allowlist
-        if f in allowlist:
+        # Check if file is in allowlist (supports directory prefixes)
+        if is_allowed(f):
             files_modified.append(f)
         else:
             unauthorized_files.append(f)
