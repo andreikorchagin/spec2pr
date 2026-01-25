@@ -192,6 +192,25 @@ Implement this task now. Only modify files in the allowlist.
         for f in unauthorized_files:
             subprocess.run(["git", "checkout", "--", f], capture_output=True)
 
+    # Check LOC cap if specified
+    loc_cap = task.get("loc_cap", 300)
+    loc_count = _count_changed_lines(files_modified)
+
+    if loc_count > loc_cap:
+        # Revert all changes to allowed files
+        print(f"LOC cap exceeded: {loc_count} lines > {loc_cap} limit", file=sys.stderr)
+        for f in files_modified:
+            subprocess.run(["git", "checkout", "--", f], capture_output=True)
+
+        return {
+            "task_id": task["id"],
+            "success": False,
+            "files_modified": [],
+            "summary": f"Task exceeded LOC limit ({loc_count} > {loc_cap})",
+            "error": f"Task exceeded LOC cap: {loc_count} lines changed, limit is {loc_cap}",
+            "claude_output": result.stdout[:2000],
+        }
+
     return {
         "task_id": task["id"],
         "success": True,
@@ -199,3 +218,44 @@ Implement this task now. Only modify files in the allowlist.
         "summary": f"Implemented {task['title']}",
         "claude_output": result.stdout[:2000],  # Truncate for storage
     }
+
+
+def _count_changed_lines(files: list[str]) -> int:
+    """
+    Count total lines added/deleted in the given files using git diff --stat.
+
+    Args:
+        files: List of file paths to count changes in
+
+    Returns:
+        Total number of lines changed (additions + deletions)
+    """
+    if not files:
+        return 0
+
+    result = subprocess.run(
+        ["git", "diff", "--stat"] + files,
+        capture_output=True,
+        text=True,
+    )
+
+    total_lines = 0
+    # Parse output format: "filename | X insertions(+), Y deletions(-)"
+    for line in result.stdout.strip().split("\n"):
+        if not line or line.startswith(" "):
+            continue
+        # Extract the number part after the pipe character
+        if "|" in line:
+            stats = line.split("|")[1].strip()
+            # Parse insertions/deletions counts
+            parts = stats.split()
+            for i, part in enumerate(parts):
+                if "insertion" in part or "deletion" in part:
+                    # Get the number before the word
+                    if i > 0:
+                        try:
+                            total_lines += int(parts[i - 1])
+                        except ValueError:
+                            pass
+
+    return total_lines
