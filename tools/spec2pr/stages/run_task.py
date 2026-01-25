@@ -102,16 +102,17 @@ def _iterate_with_feedback(task: dict, result: dict, attempts: list) -> dict:
 
         # Run code-review
         review = code_review(task, diff)
+        feedback = review.get("feedback", {})
         review["iteration"] = iteration
 
-        if review.get("verdict") == "approve":
+        if feedback.get("verdict") == "approve":
             print(f"    Code-review approved", file=sys.stderr)
             review_history.append(review)
             result["review_history"] = review_history
             return result
 
         # Code-review requested changes
-        issues = review.get("issues", [])
+        issues = feedback.get("issues", [])
         print(f"    Code-review requested changes ({len(issues)} issue(s))", file=sys.stderr)
         review_history.append(review)
 
@@ -135,7 +136,8 @@ def _iterate_with_feedback(task: dict, result: dict, attempts: list) -> dict:
 
 def _format_code_review_feedback(review: dict) -> str:
     """Format code review issues into feedback text."""
-    issues = review.get("issues", [])
+    feedback = review.get("feedback", {})
+    issues = feedback.get("issues", [])
     if not issues:
         return ""
 
