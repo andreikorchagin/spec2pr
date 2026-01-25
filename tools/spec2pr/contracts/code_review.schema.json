@@ -1,49 +1,52 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Code Review",
-  "description": "Structured code review feedback with issues and approval decision",
+  "title": "CodeReview",
+  "description": "Code review input and output structure",
   "type": "object",
-  "required": ["verdict", "issues"],
+  "required": ["task", "diff", "feedback"],
   "properties": {
-    "verdict": {
-      "type": "string",
-      "enum": ["approve", "request_changes"],
-      "description": "Code review decision"
+    "task": {
+      "type": "object",
+      "description": "Task specification being reviewed",
+      "required": ["id", "title", "goal"],
+      "properties": {
+        "id": {"type": "string"},
+        "title": {"type": "string"},
+        "goal": {"type": "string"},
+        "files_allowlist": {"type": "array", "items": {"type": "string"}},
+        "non_goals": {"type": "array", "items": {"type": "string"}, "default": []}
+      }
     },
-    "issues": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["file", "line", "severity", "message"],
-        "properties": {
-          "file": {
-            "type": "string",
-            "description": "File path where the issue was found"
-          },
-          "line": {
-            "type": "integer",
-            "description": "Line number of the issue (0 if file-level)"
-          },
-          "severity": {
-            "type": "string",
-            "enum": ["info", "warning", "error"],
-            "description": "Issue severity level"
-          },
-          "message": {
-            "type": "string",
-            "description": "Description of the issue"
-          },
-          "suggestion": {
-            "type": "string",
-            "description": "Optional fix suggestion"
-          }
-        }
-      },
-      "description": "List of code review issues found"
-    },
-    "summary": {
+    "diff": {
       "type": "string",
-      "description": "Overall review summary and key observations"
+      "description": "Git diff output"
+    },
+    "feedback": {
+      "type": "object",
+      "description": "Structured review feedback",
+      "required": ["verdict", "issues"],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": ["approve", "request_changes"]
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["severity", "category", "message"],
+            "properties": {
+              "severity": {"type": "string", "enum": ["blocking", "warning", "suggestion"]},
+              "category": {"type": "string", "enum": ["security", "correctness", "scope", "style", "performance"]},
+              "message": {"type": "string"},
+              "file_path": {"type": "string"},
+              "line": {"type": "integer"}
+            }
+          },
+          "default": []
+        },
+        "summary": {"type": "string"}
+      }
     }
   }
 }

@@ -20,6 +20,7 @@ import time
 from stages.load_spec import load_spec
 from stages.plan_tasks import plan_tasks
 from stages.run_task import run_task
+from stages.code_review import run_code_review
 from stages.verify import verify
 from stages.judge import judge
 from stages.publish import publish_pr, publish_issue, publish_combined_pr
@@ -172,13 +173,13 @@ def main():
     print(f"=== spec2pr: Processing {repo}#{issue_number} ===")
 
     # Stage 1: Load spec from GitHub issue
-    print("\n[1/6] Loading spec from issue...")
+    print("\n[1/7] Loading spec from issue...")
     spec = load_spec(repo, issue_number)
     write_json(artifacts_dir / "spec.json", spec)
     print(f"  Spec: {spec['title']}")
 
     # Stage 2: Plan tasks (Claude Code headless)
-    print("\n[2/6] Planning tasks...")
+    print("\n[2/7] Planning tasks...")
     tasks = plan_tasks(spec)
     write_json(artifacts_dir / "tasks.json", {"tasks": tasks})
     print(f"  Planned {len(tasks)} task(s)")
@@ -188,12 +189,12 @@ def main():
     rejected_tasks = []
     executed_tasks = []
 
-    # Stage 3-5: Execute each task (no publishing yet)
+    # Stage 3-6: Execute each task (no publishing yet)
     for i, task in enumerate(tasks):
         task_dir = artifacts_dir / task["id"]
         task_dir.mkdir(parents=True, exist_ok=True)
 
-        print(f"\n[3/5] Running task {task['id']}: {task['title']}...")
+        print(f"\n[3/6] Running task {task['id']}: {task['title']}...")
         result = run_task(task)
         write_json(task_dir / "result.json", result)
 
@@ -204,11 +205,29 @@ def main():
         if not result.get("success", True):
             print(f"  Warning: All attempts failed", file=sys.stderr)
 
-        print(f"[4/5] Verifying task {task['id']}...")
+        print(f"[4/6] Reviewing code changes for task {task['id']}...")
+        # Get git diff after task execution
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached"],
+            capture_output=True,
+            text=True,
+        )
+        diff = diff_result.stdout
+        review_result = run_code_review(task, diff)
+        write_json(task_dir / "review.json", review_result)
+
+        # Log review verdict
+        review_verdict = review_result.get("feedback", {}).get("verdict", "unknown")
+        if review_verdict == "approve":
+            print(f"  ✓ Code review approved")
+        else:
+            print(f"  ⚠ Code review requested changes")
+
+        print(f"[5/6] Verifying task {task['id']}...")
         verify_result = verify(task)
         write_json(task_dir / "verify.json", verify_result)
 
-        print(f"[5/5] Judging task {task['id']}...")
+        print(f"[6/6] Judging task {task['id']}...")
         judgment = judge(task, result, verify_result)
         write_json(task_dir / "judgment.json", judgment)
 
@@ -235,8 +254,8 @@ def main():
             rejected_tasks.append({"task": task, "judgment": judgment})
             print(f"  ✗ Task rejected: {judgment.get('rationale', 'unknown reason')[:100]}")
 
-    # Stage 6: Publish results
-    print("\n[6/6] Publishing results...")
+    # Stage 7: Publish results
+    print("\n[7/7] Publishing results...")
 
     if args.dry_run:
         if accepted_tasks:

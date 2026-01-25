@@ -1,4 +1,4 @@
-"""Code review stage - uses Claude Code to provide structured code feedback."""
+"""Code review stage - uses Claude to review code changes against task spec."""
 
 import json
 import re
@@ -6,24 +6,33 @@ import subprocess
 from pathlib import Path
 
 
-CODE_REVIEW_PROMPT = Path(__file__).parent.parent / "prompts" / "code_review.md"
+REVIEWER_PROMPT = Path(__file__).parent.parent / "prompts" / "reviewer.md"
 
 
-def code_review(task: dict, diff: str) -> dict:
+def run_code_review(task: dict, diff: str) -> dict:
     """
-    Use Claude Code to review task implementation against the diff.
+    Use Claude to review code changes against task specification.
 
     Args:
-        task: Original task dict with goal and requirements
-        diff: Git diff output showing the changes made
+        task: Task dict with id, title, goal, files_allowlist, non_goals
+        diff: Git diff output as string
 
     Returns:
-        Code review dict matching code_review.schema.json
+        Review dict matching code_review.schema.json with structure:
+        {
+            "task": {...},
+            "diff": "...",
+            "feedback": {
+                "verdict": "approve" | "request_changes",
+                "issues": [...],
+                "summary": "..."
+            }
+        }
     """
-    # Read the code review prompt
-    prompt = CODE_REVIEW_PROMPT.read_text()
+    # Read the reviewer prompt
+    prompt = REVIEWER_PROMPT.read_text()
 
-    # Build context for the code review
+    # Build context for review
     context = {
         "task": task,
         "diff": diff,
@@ -31,13 +40,26 @@ def code_review(task: dict, diff: str) -> dict:
 
     full_prompt = f"""{prompt}
 
-## Context
+## Task Specification
 
 ```json
-{json.dumps(context, indent=2)}
+{json.dumps(task, indent=2)}
 ```
 
-Output only valid JSON matching the code_review schema.
+## Git Diff
+
+```
+{diff}
+```
+
+Review the changes and output only valid JSON matching this structure:
+```json
+{{
+  "verdict": "approve",
+  "issues": [],
+  "summary": "Brief assessment"
+}}
+```
 """
 
     # Run Claude Code headlessly
@@ -57,21 +79,49 @@ Output only valid JSON matching the code_review schema.
     if result.returncode != 0:
         # Log full output for debugging
         import sys
-        print(f"Code review Claude stderr: {result.stderr}", file=sys.stderr)
-        print(f"Code review Claude stdout: {result.stdout[:1000]}", file=sys.stderr)
-        # If Claude fails, default to approve (tests should catch issues)
-        error_info = result.stderr[:200] or result.stdout[:200] or "timeout/error"
+        print(f"Reviewer Claude stderr: {result.stderr}", file=sys.stderr)
+        print(f"Reviewer Claude stdout: {result.stdout[:1000]}", file=sys.stderr)
+        # Default to requesting changes if reviewer fails
+        feedback = {
+            "verdict": "request_changes",
+            "issues": [{
+                "severity": "blocking",
+                "category": "correctness",
+                "message": f"Code review failed: {result.stderr[:200] or 'timeout/error'}"
+            }],
+            "summary": "Code review process encountered an error",
+        }
         return {
-            "verdict": "approve",
-            "issues": [],
-            "summary": f"Code review unavailable: {error_info}",
+            "task": task,
+            "diff": diff,
+            "feedback": feedback,
         }
 
-    # Parse review from output
+    # Parse feedback from output
     output = result.stdout.strip()
+    feedback = _parse_feedback(output)
+
+    return {
+        "task": task,
+        "diff": diff,
+        "feedback": feedback,
+    }
+
+
+def _parse_feedback(output: str) -> dict:
+    """
+    Parse feedback JSON from Claude output.
+
+    Args:
+        output: Claude stdout
+
+    Returns:
+        Feedback dict with verdict, issues, summary
+    """
     try:
         response = json.loads(output)
         if isinstance(response, dict):
+            # Handle wrapped response format
             if "result" in response:
                 result_text = response["result"]
                 # Strip markdown code block if present
@@ -79,18 +129,29 @@ Output only valid JSON matching the code_review schema.
                     result_text = re.sub(r'^```(?:json)?\n?', '', result_text)
                     result_text = re.sub(r'\n?```$', '', result_text)
                 return json.loads(result_text)
-            return response
+            # Handle direct feedback format
+            if "verdict" in response:
+                return response
     except json.JSONDecodeError:
         pass
 
     # Try to find JSON object in output
     json_match = re.search(r'\{[\s\S]*\}', output)
     if json_match:
-        return json.loads(json_match.group())
+        try:
+            parsed = json.loads(json_match.group())
+            if "verdict" in parsed:
+                return parsed
+        except json.JSONDecodeError:
+            pass
 
-    # Default to approve if we can't parse review
+    # Default to requesting changes if we can't parse
     return {
-        "verdict": "approve",
-        "issues": [],
-        "summary": "Code review completed (parsing unavailable)",
+        "verdict": "request_changes",
+        "issues": [{
+            "severity": "blocking",
+            "category": "correctness",
+            "message": "Failed to parse review feedback"
+        }],
+        "summary": "Unable to complete code review",
     }
