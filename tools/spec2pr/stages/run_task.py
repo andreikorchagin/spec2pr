@@ -208,6 +208,7 @@ Implement this task now. Only modify files in the allowlist.
             "error": f"Claude Code failed: {error_info}",
             "files_modified": [],
             "summary": "Feedback iteration failed",
+            "model": model,
         }
 
     # Get list of modified files
@@ -267,6 +268,7 @@ Implement this task now. Only modify files in the allowlist.
         "success": True,
         "files_modified": files_modified,
         "summary": "Applied feedback fixes",
+        "model": model,
     }
 
 
