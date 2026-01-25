@@ -35,9 +35,10 @@ def _build_review_section(accepted_tasks: list) -> str:
 
         for review in history:
             iteration = review.get("iteration", "?")
-            verdict = review.get("verdict", "unknown")
-            issues = review.get("issues", [])
-            summary = review.get("summary", "")
+            feedback = review.get("feedback", {})
+            verdict = feedback.get("verdict", "unknown")
+            issues = feedback.get("issues", [])
+            summary = feedback.get("summary", "")
 
             if verdict == "approve":
                 review_items.append(f"- **Iteration {iteration}**: ✅ Approved")
@@ -125,7 +126,7 @@ def publish_combined_pr(repo: str, spec: dict, accepted_tasks: list, issue_numbe
     # Build PR body
     body = f"""## Summary
 
-{spec['title']}
+{clean_title(spec['title'])}
 
 Closes #{issue_number}
 
