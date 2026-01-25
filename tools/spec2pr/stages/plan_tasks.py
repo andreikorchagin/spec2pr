@@ -21,6 +21,69 @@ INCLUDED_EXTENSIONS = {
 }
 
 
+def build_dependency_graph(tasks: list[dict]) -> list[dict]:
+    """
+    Build dependency graph and return tasks in topological order.
+
+    Args:
+        tasks: List of task dicts, each may have 'depends_on' field
+
+    Returns:
+        List of tasks in execution order (topologically sorted)
+
+    Raises:
+        ValueError: If task IDs are invalid or dependencies reference missing tasks
+    """
+    # Build task ID to task mapping
+    task_map = {}
+    for task in tasks:
+        task_id = task.get("id")
+        if not task_id:
+            raise ValueError(f"Task missing 'id' field: {task}")
+        if task_id in task_map:
+            raise ValueError(f"Duplicate task ID: {task_id}")
+        task_map[task_id] = task
+
+    # Validate all dependencies exist
+    for task in tasks:
+        depends_on = task.get("depends_on", [])
+        for dep_id in depends_on:
+            if dep_id not in task_map:
+                raise ValueError(
+                    f"Task {task['id']} depends on non-existent task {dep_id}"
+                )
+
+    # Topological sort using Kahn's algorithm
+    # Calculate in-degree for each task
+    in_degree = {task_id: 0 for task_id in task_map}
+    for task in tasks:
+        for dep_id in task.get("depends_on", []):
+            in_degree[task["id"]] += 1
+
+    # Queue of tasks with no dependencies
+    queue = [task_id for task_id, degree in in_degree.items() if degree == 0]
+    result = []
+
+    while queue:
+        # Sort queue for deterministic ordering
+        queue.sort()
+        task_id = queue.pop(0)
+        result.append(task_map[task_id])
+
+        # Reduce in-degree for tasks that depend on this one
+        for other_task in tasks:
+            if task_id in other_task.get("depends_on", []):
+                in_degree[other_task["id"]] -= 1
+                if in_degree[other_task["id"]] == 0:
+                    queue.append(other_task["id"])
+
+    # Check if all tasks were processed (no cycles)
+    if len(result) != len(tasks):
+        raise ValueError("Dependency cycle detected in task graph")
+
+    return result
+
+
 def discover_verification_options() -> list[str]:
     """
     Discover what verification/CI options are available in the repo.

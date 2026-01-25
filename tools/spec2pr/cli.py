@@ -8,6 +8,7 @@ Usage:
 """
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 import json
 import os
@@ -15,10 +16,11 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+import threading
 import time
 
 from stages.load_spec import load_spec
-from stages.plan_tasks import plan_tasks
+from stages.plan_tasks import plan_tasks, build_dependency_graph
 from stages.run_task import run_task
 from stages.code_review import run_code_review
 from stages.verify import verify
@@ -128,6 +130,185 @@ def validate_setup() -> list[str]:
     return errors
 
 
+def execute_task_with_stages(
+    task: dict,
+    artifacts_dir: Path,
+    task_lock: threading.Lock
+) -> tuple[dict, dict, dict, dict]:
+    """
+    Execute a single task including run, review, verify, and judge stages.
+
+    Args:
+        task: Task dict
+        artifacts_dir: Base artifacts directory
+        task_lock: Thread lock for serializing git operations
+
+    Returns:
+        Tuple of (task, result, verify_result, judgment)
+    """
+    task_dir = artifacts_dir / task["id"]
+    task_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"\n[3/6] Running task {task['id']}: {task['title']}...")
+
+    # Run task execution (may modify files)
+    with task_lock:
+        result = run_task(task)
+        write_json(task_dir / "result.json", result)
+
+    # Log retry information
+    attempts = result.get("attempts", [])
+    if len(attempts) > 1:
+        print(f"  Completed after {len(attempts)} attempt(s), final model: {result.get('model', 'unknown')}")
+    if not result.get("success", True):
+        print(f"  Warning: All attempts failed", file=sys.stderr)
+
+    print(f"[4/6] Reviewing code changes for task {task['id']}...")
+    # Get git diff after task execution
+    with task_lock:
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached"],
+            capture_output=True,
+            text=True,
+        )
+    diff = diff_result.stdout
+    review_result = run_code_review(task, diff)
+    write_json(task_dir / "review.json", review_result)
+
+    # Log review verdict
+    review_verdict = review_result.get("feedback", {}).get("verdict", "unknown")
+    if review_verdict == "approve":
+        print(f"  ✓ Code review approved")
+    else:
+        print(f"  ⚠ Code review requested changes")
+
+    print(f"[5/6] Verifying task {task['id']}...")
+    with task_lock:
+        verify_result = verify(task)
+        write_json(task_dir / "verify.json", verify_result)
+
+    print(f"[6/6] Judging task {task['id']}...")
+    judgment = judge(task, result, verify_result)
+    write_json(task_dir / "judgment.json", judgment)
+
+    # Validate judgment has required fields
+    verdict = judgment.get("verdict")
+    if verdict not in ("accept", "reject"):
+        print(f"  Warning: Invalid judgment (verdict={verdict}), treating as reject", file=sys.stderr)
+        judgment["verdict"] = "reject"
+        judgment["blocking_issues"] = judgment.get("blocking_issues", []) + [
+            f"Judge returned invalid verdict: {verdict}"
+        ]
+        verdict = "reject"
+
+    if verdict == "accept":
+        print(f"  ✓ Task accepted")
+    else:
+        print(f"  ✗ Task rejected: {judgment.get('rationale', 'unknown reason')[:100]}")
+
+    return task, result, verify_result, judgment
+
+
+def execute_tasks_parallel(
+    tasks: list[dict],
+    artifacts_dir: Path,
+    max_workers: int = 4
+) -> tuple[list[dict], list[dict]]:
+    """
+    Execute tasks in parallel while respecting dependency order.
+
+    Args:
+        tasks: List of tasks (already sorted in dependency order)
+        artifacts_dir: Artifacts directory for storing results
+        max_workers: Maximum number of parallel workers
+
+    Returns:
+        Tuple of (accepted_tasks, rejected_tasks)
+    """
+    accepted_tasks = []
+    rejected_tasks = []
+    task_lock = threading.Lock()
+
+    # Build dependency map for quick lookup
+    task_map = {task["id"]: task for task in tasks}
+    completed = set()
+    failed = set()
+
+    # Group tasks by dependency level
+    ready_queue = []
+    waiting = []
+
+    for task in tasks:
+        deps = task.get("depends_on", [])
+        if not deps:
+            ready_queue.append(task)
+        else:
+            waiting.append(task)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {}
+
+        # Submit initial ready tasks
+        for task in ready_queue:
+            future = executor.submit(execute_task_with_stages, task, artifacts_dir, task_lock)
+            futures[future] = task
+
+        # Process completed tasks and submit new ones
+        while futures:
+            # Wait for next completed future
+            done_futures = []
+            for future in as_completed(futures):
+                done_futures.append(future)
+                break  # Process one at a time to update waiting queue
+
+            for future in done_futures:
+                task = futures.pop(future)
+                task_obj, result, verify_result, judgment = future.result()
+
+                if judgment["verdict"] == "accept":
+                    accepted_tasks.append({"task": task_obj, "result": result, "verify": verify_result})
+                    completed.add(task_obj["id"])
+                else:
+                    rejected_tasks.append({"task": task_obj, "judgment": judgment})
+                    failed.add(task_obj["id"])
+
+            # Check if any waiting tasks are now ready
+            newly_ready = []
+            still_waiting = []
+
+            for waiting_task in waiting:
+                deps = waiting_task.get("depends_on", [])
+                # Task is ready if all deps are completed (skip if any dep failed)
+                deps_failed = any(dep_id in failed for dep_id in deps)
+                deps_ready = all(dep_id in completed for dep_id in deps)
+
+                if deps_failed:
+                    # Dependency failed, skip this task
+                    print(f"  Skipping {waiting_task['id']} - dependency failed")
+                    rejected_tasks.append({
+                        "task": waiting_task,
+                        "judgment": {
+                            "verdict": "reject",
+                            "rationale": "Skipped due to failed dependency",
+                            "blocking_issues": ["Dependency task failed"]
+                        }
+                    })
+                    failed.add(waiting_task["id"])
+                elif deps_ready:
+                    newly_ready.append(waiting_task)
+                else:
+                    still_waiting.append(waiting_task)
+
+            waiting = still_waiting
+
+            # Submit newly ready tasks
+            for task in newly_ready:
+                future = executor.submit(execute_task_with_stages, task, artifacts_dir, task_lock)
+                futures[future] = task
+
+    return accepted_tasks, rejected_tasks
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run the spec2pr pipeline")
     parser.add_argument("--version", action="version", version=f"spec2pr {__version__}")
@@ -184,75 +365,32 @@ def main():
     write_json(artifacts_dir / "tasks.json", {"tasks": tasks})
     print(f"  Planned {len(tasks)} task(s)")
 
-    # Track results for combined PR
-    accepted_tasks = []
-    rejected_tasks = []
+    # Build dependency graph and get execution order
+    try:
+        ordered_tasks = build_dependency_graph(tasks)
+        print(f"  Tasks ordered by dependencies")
+    except ValueError as e:
+        print(f"Error in task dependencies: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Stage 3-6: Execute tasks in parallel (respecting dependencies)
+    print("\n[3-6/7] Executing tasks in parallel...")
+    accepted_tasks, rejected_tasks = execute_tasks_parallel(ordered_tasks, artifacts_dir)
+
+    # Build executed_tasks summary
     executed_tasks = []
-
-    # Stage 3-6: Execute each task (no publishing yet)
-    for i, task in enumerate(tasks):
-        task_dir = artifacts_dir / task["id"]
-        task_dir.mkdir(parents=True, exist_ok=True)
-
-        print(f"\n[3/6] Running task {task['id']}: {task['title']}...")
-        result = run_task(task)
-        write_json(task_dir / "result.json", result)
-
-        # Log retry information
-        attempts = result.get("attempts", [])
-        if len(attempts) > 1:
-            print(f"  Completed after {len(attempts)} attempt(s), final model: {result.get('model', 'unknown')}")
-        if not result.get("success", True):
-            print(f"  Warning: All attempts failed", file=sys.stderr)
-
-        print(f"[4/6] Reviewing code changes for task {task['id']}...")
-        # Get git diff after task execution
-        diff_result = subprocess.run(
-            ["git", "diff", "--cached"],
-            capture_output=True,
-            text=True,
-        )
-        diff = diff_result.stdout
-        review_result = run_code_review(task, diff)
-        write_json(task_dir / "review.json", review_result)
-
-        # Log review verdict
-        review_verdict = review_result.get("feedback", {}).get("verdict", "unknown")
-        if review_verdict == "approve":
-            print(f"  ✓ Code review approved")
-        else:
-            print(f"  ⚠ Code review requested changes")
-
-        print(f"[5/6] Verifying task {task['id']}...")
-        verify_result = verify(task)
-        write_json(task_dir / "verify.json", verify_result)
-
-        print(f"[6/6] Judging task {task['id']}...")
-        judgment = judge(task, result, verify_result)
-        write_json(task_dir / "judgment.json", judgment)
-
-        # Validate judgment has required fields
-        verdict = judgment.get("verdict")
-        if verdict not in ("accept", "reject"):
-            print(f"  Warning: Invalid judgment (verdict={verdict}), treating as reject", file=sys.stderr)
-            judgment["verdict"] = "reject"
-            judgment["blocking_issues"] = judgment.get("blocking_issues", []) + [
-                f"Judge returned invalid verdict: {verdict}"
-            ]
-            verdict = "reject"
-
+    for at in accepted_tasks:
         executed_tasks.append({
-            "id": task["id"],
-            "title": task["title"],
-            "status": verdict
+            "id": at["task"]["id"],
+            "title": at["task"]["title"],
+            "status": "accept"
         })
-
-        if verdict == "accept":
-            accepted_tasks.append({"task": task, "result": result, "verify": verify_result})
-            print(f"  ✓ Task accepted")
-        else:
-            rejected_tasks.append({"task": task, "judgment": judgment})
-            print(f"  ✗ Task rejected: {judgment.get('rationale', 'unknown reason')[:100]}")
+    for rt in rejected_tasks:
+        executed_tasks.append({
+            "id": rt["task"]["id"],
+            "title": rt["task"]["title"],
+            "status": "reject"
+        })
 
     # Stage 7: Publish results
     print("\n[7/7] Publishing results...")
