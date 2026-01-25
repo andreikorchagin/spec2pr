@@ -309,13 +309,166 @@ def execute_tasks_parallel(
     return accepted_tasks, rejected_tasks
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Run the spec2pr pipeline")
+def add_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add CLI arguments to the parser."""
     parser.add_argument("--version", action="version", version=f"spec2pr {__version__}")
     parser.add_argument("--status", action="store_true", help="Check spec2pr setup configuration")
     parser.add_argument("--issue", type=int, default=None, help="GitHub issue number")
+    parser.add_argument("--issues", type=str, default=None, help="Comma-separated list of issue numbers for batch processing")
     parser.add_argument("--repo", type=str, default=None, help="Target repo (owner/repo)")
     parser.add_argument("--dry-run", action="store_true", help="Run pipeline without creating PRs or issues (for testing)")
+
+
+def process_single_issue(repo: str, issue_number: int, dry_run: bool = False) -> dict:
+    """
+    Process a single issue through the spec2pr pipeline.
+
+    Returns:
+        Dict with keys: issue, branch, pr_url, status (success/failure)
+    """
+    artifacts_dir = Path(f".spec2pr/artifacts/{issue_number}")
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    start_time_dt = datetime.now()
+    start_time = start_time_dt.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"Pipeline started at: {start_time}")
+    print(f"=== spec2pr: Processing {repo}#{issue_number} ===")
+
+    result = {
+        "issue": issue_number,
+        "branch": f"spec2pr/issue-{issue_number}",
+        "pr_url": None,
+        "status": "failure"
+    }
+
+    try:
+        # Stage 1: Load spec from GitHub issue
+        print("\n[1/7] Loading spec from issue...")
+        spec = load_spec(repo, issue_number)
+        write_json(artifacts_dir / "spec.json", spec)
+        print(f"  Spec: {spec['title']}")
+
+        # Stage 2: Plan tasks (Claude Code headless)
+        print("\n[2/7] Planning tasks...")
+        tasks = plan_tasks(spec)
+        write_json(artifacts_dir / "tasks.json", {"tasks": tasks})
+        print(f"  Planned {len(tasks)} task(s)")
+
+        # Build dependency graph and get execution order
+        try:
+            ordered_tasks = build_dependency_graph(tasks)
+            print(f"  Tasks ordered by dependencies")
+        except ValueError as e:
+            print(f"Error in task dependencies: {e}", file=sys.stderr)
+            return result
+
+        # Stage 3-6: Execute tasks in parallel (respecting dependencies)
+        print("\n[3-6/7] Executing tasks in parallel...")
+        accepted_tasks, rejected_tasks = execute_tasks_parallel(ordered_tasks, artifacts_dir)
+
+        # Build executed_tasks summary
+        executed_tasks = []
+        for at in accepted_tasks:
+            executed_tasks.append({
+                "id": at["task"]["id"],
+                "title": at["task"]["title"],
+                "status": "accept"
+            })
+        for rt in rejected_tasks:
+            executed_tasks.append({
+                "id": rt["task"]["id"],
+                "title": rt["task"]["title"],
+                "status": "reject"
+            })
+
+        # Stage 7: Publish results
+        print("\n[7/7] Publishing results...")
+
+        if dry_run:
+            if accepted_tasks:
+                print(f"  [DRY RUN] Would create PR with {len(accepted_tasks)} task(s)")
+            for rt in rejected_tasks:
+                print(f"  [DRY RUN] Would create issue for rejected task {rt['task']['id']}")
+        else:
+            # Create single PR for all accepted tasks
+            if accepted_tasks:
+                pr_url = publish_combined_pr(repo, spec, accepted_tasks, issue_number)
+                print(f"  Created PR: {pr_url}")
+                result["pr_url"] = pr_url
+            else:
+                print("  No tasks accepted - skipping PR creation")
+
+            # Create issues for rejected tasks
+            for rt in rejected_tasks:
+                issue_url = publish_issue(repo, rt["task"], rt["judgment"])
+                print(f"  Created issue for {rt['task']['id']}: {issue_url}")
+
+        # Generate and print summary
+        end_time_dt = datetime.now()
+        end_time = end_time_dt.strftime("%Y-%m-%d %H:%M:%S")
+        final_status = "success" if accepted_tasks or not rejected_tasks else "partial"
+        duration = int((end_time_dt - start_time_dt).total_seconds())
+
+        summary = {
+            "issue": issue_number,
+            "repo": repo,
+            "start_time": start_time,
+            "end_time": end_time,
+            "duration_seconds": duration,
+            "final_status": final_status,
+            "tasks_planned": len(tasks),
+            "tasks_executed": len(executed_tasks),
+            "tasks_accepted": len(accepted_tasks),
+            "tasks_rejected": len(rejected_tasks),
+            "executed_tasks": executed_tasks
+        }
+
+        # Write summary to file
+        summary_file = Path(f".spec2pr/artifacts/{issue_number}/summary.json")
+        write_json(summary_file, summary)
+
+        # Print human-readable summary
+        print("\n=== Pipeline Summary ===")
+        print(f"Issue: {repo}#{issue_number}")
+        print(f"Start: {start_time}")
+        print(f"End: {end_time}")
+        print(f"Duration: {duration}s")
+        print(f"Status: {final_status}")
+        print(f"Tasks: {len(accepted_tasks)} accepted, {len(rejected_tasks)} rejected out of {len(executed_tasks)} executed")
+        print("=== spec2pr: Complete ===")
+
+        result["status"] = "success"
+        return result
+
+    except Exception as e:
+        print(f"Error processing issue {issue_number}: {e}", file=sys.stderr)
+        return result
+
+
+def process_batch(repo: str, issue_numbers: list[int], dry_run: bool = False) -> list[dict]:
+    """
+    Process multiple issues sequentially through the spec2pr pipeline.
+
+    Args:
+        repo: Target repository (owner/repo)
+        issue_numbers: List of issue numbers to process
+        dry_run: If True, don't create PRs or issues
+
+    Returns:
+        List of result dicts, each with keys: issue, branch, pr_url, status
+    """
+    batch_results = []
+
+    for issue_number in issue_numbers:
+        result = process_single_issue(repo, issue_number, dry_run)
+        batch_results.append(result)
+
+    return batch_results
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Run the spec2pr pipeline")
+    add_arguments(parser)
     args = parser.parse_args()
 
     # Handle --status flag
@@ -326,9 +479,26 @@ def main():
             print(f"{status_symbol} {component}: {result['message']}")
         sys.exit(exit_code)
 
-    # Require --issue for pipeline execution
-    if args.issue is None:
-        parser.error("--issue is required (or use --status to check configuration)")
+    # Determine repo from environment if not provided
+    repo = args.repo or os.environ.get("GITHUB_REPOSITORY")
+    if not repo:
+        print("Error: --repo required or GITHUB_REPOSITORY must be set", file=sys.stderr)
+        sys.exit(1)
+
+    # Collect issue numbers from different sources
+    issue_numbers = []
+
+    if args.issues:
+        # Parse comma-separated issue numbers
+        try:
+            issue_numbers = [int(n.strip()) for n in args.issues.split(",")]
+        except ValueError:
+            print("Error: --issues must be comma-separated integers (e.g., '1,2,3')", file=sys.stderr)
+            sys.exit(1)
+    elif args.issue is not None:
+        issue_numbers = [args.issue]
+    else:
+        parser.error("One of --issue or --issues is required (or use --status to check configuration)")
 
     # Validate setup
     errors = validate_setup()
@@ -338,114 +508,8 @@ def main():
             print(f"  - {error}", file=sys.stderr)
         sys.exit(1)
 
-    # Determine repo from environment if not provided
-    repo = args.repo or os.environ.get("GITHUB_REPOSITORY")
-    if not repo:
-        print("Error: --repo required or GITHUB_REPOSITORY must be set", file=sys.stderr)
-        sys.exit(1)
-
-    issue_number = args.issue
-    artifacts_dir = Path(f".spec2pr/artifacts/{issue_number}")
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
-
-    start_time_dt = datetime.now()
-    start_time = start_time_dt.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"Pipeline started at: {start_time}")
-    print(f"=== spec2pr: Processing {repo}#{issue_number} ===")
-
-    # Stage 1: Load spec from GitHub issue
-    print("\n[1/7] Loading spec from issue...")
-    spec = load_spec(repo, issue_number)
-    write_json(artifacts_dir / "spec.json", spec)
-    print(f"  Spec: {spec['title']}")
-
-    # Stage 2: Plan tasks (Claude Code headless)
-    print("\n[2/7] Planning tasks...")
-    tasks = plan_tasks(spec)
-    write_json(artifacts_dir / "tasks.json", {"tasks": tasks})
-    print(f"  Planned {len(tasks)} task(s)")
-
-    # Build dependency graph and get execution order
-    try:
-        ordered_tasks = build_dependency_graph(tasks)
-        print(f"  Tasks ordered by dependencies")
-    except ValueError as e:
-        print(f"Error in task dependencies: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    # Stage 3-6: Execute tasks in parallel (respecting dependencies)
-    print("\n[3-6/7] Executing tasks in parallel...")
-    accepted_tasks, rejected_tasks = execute_tasks_parallel(ordered_tasks, artifacts_dir)
-
-    # Build executed_tasks summary
-    executed_tasks = []
-    for at in accepted_tasks:
-        executed_tasks.append({
-            "id": at["task"]["id"],
-            "title": at["task"]["title"],
-            "status": "accept"
-        })
-    for rt in rejected_tasks:
-        executed_tasks.append({
-            "id": rt["task"]["id"],
-            "title": rt["task"]["title"],
-            "status": "reject"
-        })
-
-    # Stage 7: Publish results
-    print("\n[7/7] Publishing results...")
-
-    if args.dry_run:
-        if accepted_tasks:
-            print(f"  [DRY RUN] Would create PR with {len(accepted_tasks)} task(s)")
-        for rt in rejected_tasks:
-            print(f"  [DRY RUN] Would create issue for rejected task {rt['task']['id']}")
-    else:
-        # Create single PR for all accepted tasks
-        if accepted_tasks:
-            pr_url = publish_combined_pr(repo, spec, accepted_tasks, issue_number)
-            print(f"  Created PR: {pr_url}")
-        else:
-            print("  No tasks accepted - skipping PR creation")
-
-        # Create issues for rejected tasks
-        for rt in rejected_tasks:
-            issue_url = publish_issue(repo, rt["task"], rt["judgment"])
-            print(f"  Created issue for {rt['task']['id']}: {issue_url}")
-
-    # Generate and print summary
-    end_time_dt = datetime.now()
-    end_time = end_time_dt.strftime("%Y-%m-%d %H:%M:%S")
-    final_status = "success" if accepted_tasks or not rejected_tasks else "partial"
-    duration = int((end_time_dt - start_time_dt).total_seconds())
-
-    summary = {
-        "issue": issue_number,
-        "repo": repo,
-        "start_time": start_time,
-        "end_time": end_time,
-        "duration_seconds": duration,
-        "final_status": final_status,
-        "tasks_planned": len(tasks),
-        "tasks_executed": len(executed_tasks),
-        "tasks_accepted": len(accepted_tasks),
-        "tasks_rejected": len(rejected_tasks),
-        "executed_tasks": executed_tasks
-    }
-
-    # Write summary to file
-    summary_file = Path(".spec2pr/artifacts/summary.json")
-    write_json(summary_file, summary)
-
-    # Print human-readable summary
-    print("\n=== Pipeline Summary ===")
-    print(f"Issue: {repo}#{issue_number}")
-    print(f"Start: {start_time}")
-    print(f"End: {end_time}")
-    print(f"Duration: {duration}s")
-    print(f"Status: {final_status}")
-    print(f"Tasks: {len(accepted_tasks)} accepted, {len(rejected_tasks)} rejected out of {len(executed_tasks)} executed")
-    print("=== spec2pr: Complete ===")
+    # Process issues using batch orchestrator
+    process_batch(repo, issue_numbers, args.dry_run)
 
 
 if __name__ == "__main__":
