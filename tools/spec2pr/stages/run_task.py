@@ -10,8 +10,9 @@ from pathlib import Path
 
 WORKER_PROMPT = Path(__file__).parent.parent / "prompts" / "worker.md"
 
-# Model escalation order for retries
-MODEL_ESCALATION = ["haiku", "sonnet", "opus"]
+# Model for task execution (sonnet 4.5 for cost/quality balance)
+# Could add escalation back later: ["sonnet", "sonnet", "opus"]
+MODEL_ESCALATION = ["sonnet"]
 
 
 def run_task(task: dict) -> dict:
