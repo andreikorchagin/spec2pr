@@ -7,19 +7,25 @@ import subprocess
 import sys
 from pathlib import Path
 
+from stages.code_review import code_review
+from stages.verify import verify
+
 
 WORKER_PROMPT = Path(__file__).parent.parent / "prompts" / "worker.md"
 
 # Model escalation order for retries
 MODEL_ESCALATION = ["haiku", "sonnet", "opus"]
 
+# Max iterations of verify+code-review loop
+MAX_ITERATIONS = 3
+
 
 def run_task(task: dict) -> dict:
     """
-    Use Claude Code to implement a task with retry logic.
+    Use Claude Code to implement a task with retry and iteration logic.
 
     Retries failed tasks with escalating models: haiku → sonnet → opus.
-    Previous failure context is included in retry prompts.
+    After successful implementation, runs verify and code-review loop up to 3 times.
 
     Args:
         task: Task dict matching task.schema.json
@@ -47,6 +53,8 @@ def run_task(task: dict) -> dict:
         attempts.append({**result})
 
         if result.get("success", False):
+            # Run verification and code-review iteration loop
+            result = _iterate_with_feedback(task, result, attempts)
             result["attempts"] = attempts
             return result
 
@@ -56,6 +64,209 @@ def run_task(task: dict) -> dict:
     # Create a new dict to avoid circular reference (attempts contains copies)
     final_result = {**attempts[-1], "attempts": attempts}
     return final_result
+
+
+def _iterate_with_feedback(task: dict, result: dict, attempts: list) -> dict:
+    """
+    Run verify and code-review loop with up to MAX_ITERATIONS iterations.
+
+    If code-review requests changes, gather diff and provide feedback for fixes.
+
+    Args:
+        task: Task dict
+        result: Initial execution result
+        attempts: List of previous attempts for context
+
+    Returns:
+        Result dict after iteration (success or failure after max iterations)
+    """
+    review_history = []
+
+    for iteration in range(1, MAX_ITERATIONS + 1):
+        print(f"  Iteration {iteration}/{MAX_ITERATIONS}: Running verify + code-review...", file=sys.stderr)
+
+        # Run verification
+        verify_result = verify(task)
+        if not verify_result.get("passed", False):
+            print(f"    Verify failed, skipping code-review this iteration", file=sys.stderr)
+            continue
+
+        # Get git diff for code-review
+        diff_result = subprocess.run(
+            ["git", "diff", "HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        diff = diff_result.stdout
+
+        # Run code-review
+        review = code_review(task, diff)
+        review["iteration"] = iteration
+
+        if review.get("verdict") == "approve":
+            print(f"    Code-review approved", file=sys.stderr)
+            review_history.append(review)
+            result["review_history"] = review_history
+            return result
+
+        # Code-review requested changes
+        issues = review.get("issues", [])
+        print(f"    Code-review requested changes ({len(issues)} issue(s))", file=sys.stderr)
+        review_history.append(review)
+
+        if iteration < MAX_ITERATIONS:
+            # Try to fix issues
+            feedback = _format_code_review_feedback(review)
+            print(f"    Attempting fixes based on feedback...", file=sys.stderr)
+
+            fix_result = _execute_task_with_feedback(task, result["model"], feedback)
+            if not fix_result.get("success", False):
+                print(f"    Failed to apply fixes, giving up", file=sys.stderr)
+                result["review_history"] = review_history
+                return result
+            result = fix_result
+
+    # Max iterations reached - return final result
+    print(f"  Reached max iterations, finalizing", file=sys.stderr)
+    result["review_history"] = review_history
+    return result
+
+
+def _format_code_review_feedback(review: dict) -> str:
+    """Format code review issues into feedback text."""
+    issues = review.get("issues", [])
+    if not issues:
+        return ""
+
+    feedback_lines = ["## Code Review Feedback\n"]
+    for issue in issues:
+        feedback_lines.append(f"- {issue.get('file', 'unknown')}:{issue.get('line', 0)} "
+                            f"[{issue.get('severity', 'info').upper()}] {issue.get('message', '')}")
+        if issue.get("suggestion"):
+            feedback_lines.append(f"  Suggestion: {issue.get('suggestion')}")
+
+    return "\n".join(feedback_lines)
+
+
+def _execute_task_with_feedback(task: dict, model: str, feedback: str) -> dict:
+    """
+    Execute a task with code-review feedback context.
+
+    Args:
+        task: Task dict
+        model: Model to use
+        feedback: Formatted code-review feedback
+
+    Returns:
+        Result dict
+    """
+    prompt = WORKER_PROMPT.read_text()
+
+    feedback_context = ""
+    if feedback:
+        feedback_context = f"""
+## Code Review Feedback from Previous Iteration
+
+{feedback}
+
+Please address these issues in your next attempt.
+
+---
+
+"""
+
+    full_prompt = f"""{prompt}
+{feedback_context}
+## Task to implement
+
+```json
+{json.dumps(task, indent=2)}
+```
+
+Implement this task now. Only modify files in the allowlist.
+"""
+
+    result = subprocess.run(
+        [
+            "claude",
+            "--print",
+            "--dangerously-skip-permissions",
+            "--allowedTools", "Read,Edit,Bash",
+            "--model", model,
+            "-p", full_prompt,
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        print(f"Claude Code stderr: {result.stderr}", file=sys.stderr)
+        error_info = result.stderr or result.stdout[:500] or "unknown error"
+        return {
+            "success": False,
+            "error": f"Claude Code failed: {error_info}",
+            "files_modified": [],
+            "summary": "Feedback iteration failed",
+        }
+
+    # Get list of modified files
+    git_result = subprocess.run(
+        ["git", "diff", "--name-only"],
+        capture_output=True,
+        text=True,
+    )
+
+    KNOWN_TEXT_FILES = {
+        "Makefile", "Dockerfile", "Vagrantfile", "Gemfile", "Rakefile",
+        "LICENSE", "README", "CHANGELOG", "AUTHORS", "CONTRIBUTING"
+    }
+
+    allowlist = task.get("files_allowlist", [])
+
+    def is_allowed(filepath: str) -> bool:
+        """Check if file is allowed (exact match or under allowed directory)."""
+        for allowed in allowlist:
+            if allowed.endswith("/"):
+                if filepath.startswith(allowed):
+                    return True
+            else:
+                if filepath == allowed:
+                    return True
+        return False
+
+    files_modified = []
+    unauthorized_files = []
+
+    for f in git_result.stdout.strip().split("\n"):
+        if not f or f.startswith(".spec2pr"):
+            continue
+
+        basename = f.split("/")[-1]
+        if "." not in basename and basename not in KNOWN_TEXT_FILES:
+            check = subprocess.run(
+                ["file", "--mime", f],
+                capture_output=True,
+                text=True,
+            )
+            if "executable" in check.stdout or "binary" in check.stdout:
+                subprocess.run(["git", "checkout", "--", f], capture_output=True)
+                continue
+
+        if is_allowed(f):
+            files_modified.append(f)
+        else:
+            unauthorized_files.append(f)
+
+    if unauthorized_files:
+        print(f"Reverting unauthorized file changes: {unauthorized_files}", file=sys.stderr)
+        for f in unauthorized_files:
+            subprocess.run(["git", "checkout", "--", f], capture_output=True)
+
+    return {
+        "success": True,
+        "files_modified": files_modified,
+        "summary": "Applied feedback fixes",
+    }
 
 
 def _execute_task(task: dict, model: str, previous_failures: str | None = None) -> dict:

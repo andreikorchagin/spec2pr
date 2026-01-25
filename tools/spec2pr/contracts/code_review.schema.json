@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Code Review",
+  "description": "Structured code review feedback with issues and approval decision",
+  "type": "object",
+  "required": ["verdict", "issues"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["approve", "request_changes"],
+      "description": "Code review decision"
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "severity", "message"],
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "File path where the issue was found"
+          },
+          "line": {
+            "type": "integer",
+            "description": "Line number of the issue (0 if file-level)"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["info", "warning", "error"],
+            "description": "Issue severity level"
+          },
+          "message": {
+            "type": "string",
+            "description": "Description of the issue"
+          },
+          "suggestion": {
+            "type": "string",
+            "description": "Optional fix suggestion"
+          }
+        }
+      },
+      "description": "List of code review issues found"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Overall review summary and key observations"
+    }
+  }
+}
