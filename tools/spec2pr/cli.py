@@ -39,6 +39,59 @@ def read_json(path: Path) -> dict:
         return json.load(f)
 
 
+def check_status() -> tuple[dict, int]:
+    """Check spec2pr setup and return (status_dict, exit_code)."""
+    status = {
+        "gh_cli": {"ok": False, "message": ""},
+        "claude_cli": {"ok": False, "message": ""},
+        "auth_token": {"ok": False, "message": ""},
+        "ci_script": {"ok": False, "message": ""},
+    }
+    exit_code = 0
+
+    # Check gh CLI
+    if shutil.which("gh"):
+        status["gh_cli"]["ok"] = True
+        status["gh_cli"]["message"] = "gh CLI found"
+    else:
+        status["gh_cli"]["message"] = "gh CLI not found. Install from https://cli.github.com/"
+        exit_code = 1
+
+    # Check claude CLI
+    if shutil.which("claude"):
+        status["claude_cli"]["ok"] = True
+        status["claude_cli"]["message"] = "claude CLI found"
+    else:
+        status["claude_cli"]["message"] = "claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code"
+        exit_code = 1
+
+    # Check for API key or OAuth token
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        status["auth_token"]["ok"] = True
+        status["auth_token"]["message"] = "ANTHROPIC_API_KEY is set"
+    elif os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        status["auth_token"]["ok"] = True
+        status["auth_token"]["message"] = "CLAUDE_CODE_OAUTH_TOKEN is set"
+    else:
+        status["auth_token"]["message"] = "Neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set"
+        exit_code = 1
+
+    # Check for ci.sh
+    ci_script = Path("ci.sh")
+    if ci_script.exists():
+        if os.access(ci_script, os.X_OK):
+            status["ci_script"]["ok"] = True
+            status["ci_script"]["message"] = "ci.sh found and executable"
+        else:
+            status["ci_script"]["message"] = "ci.sh found but not executable. Run: chmod +x ci.sh"
+            exit_code = 1
+    else:
+        status["ci_script"]["message"] = "ci.sh not found"
+        exit_code = 1
+
+    return status, exit_code
+
+
 def validate_setup() -> list[str]:
     """Validate that the environment is properly configured. Returns list of errors."""
     errors = []
@@ -76,10 +129,23 @@ def validate_setup() -> list[str]:
 def main():
     parser = argparse.ArgumentParser(description="Run the spec2pr pipeline")
     parser.add_argument("--version", action="version", version=f"spec2pr {__version__}")
-    parser.add_argument("--issue", type=int, required=True, help="GitHub issue number")
+    parser.add_argument("--status", action="store_true", help="Check spec2pr setup configuration")
+    parser.add_argument("--issue", type=int, default=None, help="GitHub issue number")
     parser.add_argument("--repo", type=str, default=None, help="Target repo (owner/repo)")
     parser.add_argument("--dry-run", action="store_true", help="Run pipeline without creating PRs or issues (for testing)")
     args = parser.parse_args()
+
+    # Handle --status flag
+    if args.status:
+        status, exit_code = check_status()
+        for component, result in status.items():
+            status_symbol = "✓" if result["ok"] else "✗"
+            print(f"{status_symbol} {component}: {result['message']}")
+        sys.exit(exit_code)
+
+    # Require --issue for pipeline execution
+    if args.issue is None:
+        parser.error("--issue is required (or use --status to check configuration)")
 
     # Validate setup
     errors = validate_setup()
