@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+import time
 
 from stages.load_spec import load_spec
 from stages.plan_tasks import plan_tasks
@@ -165,7 +166,8 @@ def main():
     artifacts_dir = Path(f".spec2pr/artifacts/{issue_number}")
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-    start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    start_time_dt = datetime.now()
+    start_time = start_time_dt.strftime("%Y-%m-%d %H:%M:%S")
     print(f"Pipeline started at: {start_time}")
     print(f"=== spec2pr: Processing {repo}#{issue_number} ===")
 
@@ -184,6 +186,7 @@ def main():
     # Track results for combined PR
     accepted_tasks = []
     rejected_tasks = []
+    executed_tasks = []
 
     # Stage 3-5: Execute each task (no publishing yet)
     for i, task in enumerate(tasks):
@@ -219,6 +222,12 @@ def main():
             ]
             verdict = "reject"
 
+        executed_tasks.append({
+            "id": task["id"],
+            "title": task["title"],
+            "status": verdict
+        })
+
         if verdict == "accept":
             accepted_tasks.append({"task": task, "result": result, "verify": verify_result})
             print(f"  ✓ Task accepted")
@@ -247,7 +256,39 @@ def main():
             issue_url = publish_issue(repo, rt["task"], rt["judgment"])
             print(f"  Created issue for {rt['task']['id']}: {issue_url}")
 
-    print("\n=== spec2pr: Complete ===")
+    # Generate and print summary
+    end_time_dt = datetime.now()
+    end_time = end_time_dt.strftime("%Y-%m-%d %H:%M:%S")
+    final_status = "success" if accepted_tasks or not rejected_tasks else "partial"
+    duration = int((end_time_dt - start_time_dt).total_seconds())
+
+    summary = {
+        "issue": issue_number,
+        "repo": repo,
+        "start_time": start_time,
+        "end_time": end_time,
+        "duration_seconds": duration,
+        "final_status": final_status,
+        "tasks_planned": len(tasks),
+        "tasks_executed": len(executed_tasks),
+        "tasks_accepted": len(accepted_tasks),
+        "tasks_rejected": len(rejected_tasks),
+        "executed_tasks": executed_tasks
+    }
+
+    # Write summary to file
+    summary_file = Path(".spec2pr/artifacts/summary.json")
+    write_json(summary_file, summary)
+
+    # Print human-readable summary
+    print("\n=== Pipeline Summary ===")
+    print(f"Issue: {repo}#{issue_number}")
+    print(f"Start: {start_time}")
+    print(f"End: {end_time}")
+    print(f"Duration: {duration}s")
+    print(f"Status: {final_status}")
+    print(f"Tasks: {len(accepted_tasks)} accepted, {len(rejected_tasks)} rejected out of {len(executed_tasks)} executed")
+    print("=== spec2pr: Complete ===")
 
 
 if __name__ == "__main__":
